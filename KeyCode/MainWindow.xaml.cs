@@ -8,6 +8,7 @@ namespace KeyCode;
 public partial class MainWindow : Window
 {
     private string? _chemin;
+    private readonly Runner _runner = new();
 
     public MainWindow() { InitializeComponent(); }
 
@@ -34,11 +35,23 @@ public partial class MainWindow : Window
         Editeur.Save(_chemin);
     }
 
-    private async void Executer_Click(object sender, RoutedEventArgs e)
+    private void Executer_Click(object sender, RoutedEventArgs e)
     {
+        if (_runner.EnCours) _runner.Arreter();
         Enregistrer_Click(sender, e);
         if (_chemin == null) return;
-        Sortie.Text = "Exécution...";
-        Sortie.Text = await Runner.ExecuterAsync(_chemin);
+        Sortie.Text = "";
+        Saisie.Focus();
+        _runner.Demarrer(_chemin,
+            texte => Dispatcher.Invoke(() => { Sortie.AppendText(texte); Sortie.ScrollToEnd(); }),
+            () => Dispatcher.Invoke(() => { Sortie.AppendText("\n[Programme terminé]\n"); Sortie.ScrollToEnd(); }));
+    }
+
+    private void Saisie_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key != System.Windows.Input.Key.Enter) return;
+        Sortie.AppendText(Saisie.Text + "\n");
+        _runner.Envoyer(Saisie.Text);
+        Saisie.Clear();
     }
 }

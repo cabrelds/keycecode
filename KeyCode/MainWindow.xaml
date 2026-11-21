@@ -11,10 +11,14 @@
             </MenuItem>
             <MenuItem Header="_Exécuter" Click="Executer_Click"/>
         </Menu>
-        <TextBox x:Name="Sortie" DockPanel.Dock="Bottom" Height="150"
-                 IsReadOnly="True" FontFamily="Consolas"
-                 Background="#1E1E1E" Foreground="White"
-                 VerticalScrollBarVisibility="Auto"/>
+        <DockPanel DockPanel.Dock="Bottom" Height="170">
+            <TextBox x:Name="Saisie" DockPanel.Dock="Bottom" FontFamily="Consolas"
+                     Background="#2D2D2D" Foreground="White" CaretBrush="White"
+                     KeyDown="Saisie_KeyDown"/>
+            <TextBox x:Name="Sortie" IsReadOnly="True" FontFamily="Consolas"
+                     Background="#1E1E1E" Foreground="White"
+                     VerticalScrollBarVisibility="Auto"/>
+        </DockPanel>
         <avalon:TextEditor x:Name="Editeur" ShowLineNumbers="True"
                            FontFamily="Consolas" FontSize="14"/>
     </DockPanel>
