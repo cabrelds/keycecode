@@ -2,6 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:avalon="http://icsharpcode.net/sharpdevelop/avalonedit"
+        xmlns:ctl="clr-namespace:KeyCode.Controls"
         Title="KeyCode" Height="650" Width="1000"
         AllowDrop="True" Drop="Fenetre_Drop"
         PreviewKeyDown="Fenetre_PreviewKeyDown"
@@ -30,6 +31,9 @@
                 <MenuItem Header="C_oller" InputGestureText="Ctrl+V" Click="Coller_Click"/>
                 <Separator/>
                 <MenuItem Header="Tout _sélectionner" InputGestureText="Ctrl+A" Click="ToutSelectionner_Click"/>
+                <Separator/>
+                <MenuItem Header="_Rechercher" InputGestureText="Ctrl+F" Click="Rechercher_Click"/>
+                <MenuItem Header="Re_mplacer" InputGestureText="Ctrl+H" Click="Remplacer_Click"/>
             </MenuItem>
             <MenuItem Header="_Affichage">
                 <MenuItem Header="_Thème">
@@ -47,6 +51,7 @@
             <MenuItem Header="E_xécuter">
                 <MenuItem Header="_Exécuter le fichier" InputGestureText="F5" Click="Executer_Click"/>
                 <MenuItem Header="_Arrêter" Click="Arreter_Click"/>
+                <MenuItem Header="_Effacer le terminal" Click="EffacerTerminal_Click"/>
             </MenuItem>
             <MenuItem Header="_Aide">
                 <MenuItem Header="_Raccourcis clavier" Click="Raccourcis_Click"/>
@@ -69,18 +74,14 @@
             </StatusBarItem>
         </StatusBar>
 
-        <!-- Terminal provisoire (sera remplacé par TerminalControl de morelbrad27-lab) -->
-        <DockPanel DockPanel.Dock="Bottom" Height="170">
-            <TextBox x:Name="Saisie" DockPanel.Dock="Bottom" FontFamily="Consolas"
-                     Background="#2D2D2D" Foreground="White" CaretBrush="White"
-                     KeyDown="Saisie_KeyDown"/>
-            <TextBox x:Name="Sortie" IsReadOnly="True" FontFamily="Consolas"
-                     Background="#1E1E1E" Foreground="White"
-                     VerticalScrollBarVisibility="Auto"/>
-        </DockPanel>
+        <!-- Terminal (TerminalControl de morelbrad27-lab) -->
+        <ctl:TerminalControl x:Name="Terminal" DockPanel.Dock="Bottom" Height="200"/>
 
-        <!-- Éditeur provisoire (sera remplacé par OngletsControl de DeboraQueen237) -->
-        <avalon:TextEditor x:Name="Editeur" ShowLineNumbers="True"
-                           FontFamily="Consolas" FontSize="14"/>
+        <!-- Éditeur (sera remplacé par OngletsControl) + barre de recherche (RechercheControl) -->
+        <Grid>
+            <avalon:TextEditor x:Name="Editeur" ShowLineNumbers="True"
+                               FontFamily="Consolas" FontSize="14"/>
+            <ctl:RechercheControl x:Name="Recherche"/>
+        </Grid>
     </DockPanel>
 </Window>
