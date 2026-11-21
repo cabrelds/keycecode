@@ -8,13 +8,12 @@ using KeyCode.Services;
 namespace KeyCode;
 
 /// <summary>
-/// Fenêtre principale (version provisoire : un seul éditeur, terminal intégré).
+/// Fenêtre principale (version provisoire : un seul éditeur, avec TerminalControl et RechercheControl).
 /// Propriétaire : cabrelds.
 /// </summary>
 public partial class MainWindow : Window
 {
     private string? _chemin;
-    private readonly Runner _runner = new();
     private TextEditor? _editeurSuivi;
 
     public MainWindow()
@@ -198,32 +197,25 @@ public partial class MainWindow : Window
     }
 
     // ------------------------------------------------------------------
-    // Exécuter (terminal provisoire)
+    // Exécuter
     // ------------------------------------------------------------------
 
     private void Executer_Click(object sender, RoutedEventArgs e) => ExecuterFichier();
 
     private void ExecuterFichier()
     {
-        if (_runner.EnCours) _runner.Arreter();
+        // Enregistrer d'abord ; Enregistrer retourne false si l'utilisateur annule
         if (!Enregistrer()) return;
         if (_chemin == null) return;
-        Sortie.Text = "";
-        Saisie.Focus();
-        _runner.Demarrer(_chemin,
-            texte => Dispatcher.Invoke(() => { Sortie.AppendText(texte); Sortie.ScrollToEnd(); }),
-            () => Dispatcher.Invoke(() => { Sortie.AppendText("\n[Programme terminé]\n"); Sortie.ScrollToEnd(); }));
+        Terminal.Executer(_chemin);
     }
 
-    private void Arreter_Click(object sender, RoutedEventArgs e) => _runner.Arreter();
+    private void Arreter_Click(object sender, RoutedEventArgs e) => Terminal.Arreter();
+    private void EffacerTerminal_Click(object sender, RoutedEventArgs e) => Terminal.Effacer();
 
-    private void Saisie_KeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key != Key.Enter) return;
-        Sortie.AppendText(Saisie.Text + "\n");
-        _runner.Envoyer(Saisie.Text);
-        Saisie.Clear();
-    }
+    // Ctrl+F, Ctrl+H et Ctrl+G sont captés directement par RechercheControl
+    private void Rechercher_Click(object sender, RoutedEventArgs e) => Recherche.Afficher(false);
+    private void Remplacer_Click(object sender, RoutedEventArgs e) => Recherche.Afficher(true);
 
     // ------------------------------------------------------------------
     // Aide
@@ -267,7 +259,7 @@ public partial class MainWindow : Window
             case Key.O when !maj: Ouvrir_Click(this, new RoutedEventArgs()); e.Handled = true; break;
             case Key.S when !maj: Enregistrer(); e.Handled = true; break;
             case Key.W when !maj: NouveauFichier(); e.Handled = true; break;
-            // Ctrl+F, Ctrl+H, Ctrl+Maj+F : ajoutés après la fusion des recherches
+            // Ctrl+F, Ctrl+H, Ctrl+G : gérés par RechercheControl
         }
     }
 
@@ -288,7 +280,7 @@ public partial class MainWindow : Window
             e.Cancel = true;
             return;
         }
-        _runner.Arreter();
+        Terminal.Arreter();
         SettingsService.Enregistrer();
     }
 
