@@ -2,15 +2,74 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:avalon="http://icsharpcode.net/sharpdevelop/avalonedit"
-        Title="KeyCode" Height="600" Width="900">
+        Title="KeyCode" Height="650" Width="1000"
+        AllowDrop="True" Drop="Fenetre_Drop"
+        PreviewKeyDown="Fenetre_PreviewKeyDown"
+        Closing="Fenetre_Closing">
     <DockPanel>
+        <!-- Menus -->
         <Menu DockPanel.Dock="Top">
             <MenuItem Header="_Fichier">
-                <MenuItem Header="_Ouvrir..." Click="Ouvrir_Click"/>
-                <MenuItem Header="_Enregistrer" Click="Enregistrer_Click"/>
+                <MenuItem Header="_Nouveau" InputGestureText="Ctrl+N" Click="Nouveau_Click"/>
+                <MenuItem Header="_Ouvrir un fichier..." InputGestureText="Ctrl+O" Click="Ouvrir_Click"/>
+                <MenuItem Header="Ouvrir un _dossier..." Click="OuvrirDossier_Click"/>
+                <Separator/>
+                <MenuItem Header="_Enregistrer" InputGestureText="Ctrl+S" Click="Enregistrer_Click"/>
+                <MenuItem Header="Tout enregistrer" Click="ToutEnregistrer_Click"/>
+                <Separator/>
+                <MenuItem x:Name="MenuRecents" Header="Fichiers _récents"/>
+                <Separator/>
+                <MenuItem Header="_Quitter" Click="Quitter_Click"/>
             </MenuItem>
-            <MenuItem Header="_Exécuter" Click="Executer_Click"/>
+            <MenuItem Header="_Édition">
+                <MenuItem Header="_Annuler" InputGestureText="Ctrl+Z" Click="Annuler_Click"/>
+                <MenuItem Header="_Rétablir" InputGestureText="Ctrl+Y" Click="Retablir_Click"/>
+                <Separator/>
+                <MenuItem Header="Co_uper" InputGestureText="Ctrl+X" Click="Couper_Click"/>
+                <MenuItem Header="_Copier" InputGestureText="Ctrl+C" Click="Copier_Click"/>
+                <MenuItem Header="C_oller" InputGestureText="Ctrl+V" Click="Coller_Click"/>
+                <Separator/>
+                <MenuItem Header="Tout _sélectionner" InputGestureText="Ctrl+A" Click="ToutSelectionner_Click"/>
+            </MenuItem>
+            <MenuItem Header="_Affichage">
+                <MenuItem Header="_Thème">
+                    <MenuItem Header="Clair" Click="ThemeClair_Click"/>
+                    <MenuItem Header="Sombre" Click="ThemeSombre_Click"/>
+                </MenuItem>
+                <MenuItem Header="_Zoom">
+                    <MenuItem Header="Agrandir" Click="ZoomPlus_Click"/>
+                    <MenuItem Header="Réduire" Click="ZoomMoins_Click"/>
+                    <MenuItem Header="Taille normale" Click="ZoomNormal_Click"/>
+                </MenuItem>
+                <!-- Désactivé tant que l'explorateur n'est pas fusionné -->
+                <MenuItem Header="Afficher/masquer l'_explorateur" IsEnabled="False"/>
+            </MenuItem>
+            <MenuItem Header="E_xécuter">
+                <MenuItem Header="_Exécuter le fichier" InputGestureText="F5" Click="Executer_Click"/>
+                <MenuItem Header="_Arrêter" Click="Arreter_Click"/>
+            </MenuItem>
+            <MenuItem Header="_Aide">
+                <MenuItem Header="_Raccourcis clavier" Click="Raccourcis_Click"/>
+                <MenuItem Header="À _propos" Click="APropos_Click"/>
+            </MenuItem>
         </Menu>
+
+        <!-- Barre de statut -->
+        <StatusBar DockPanel.Dock="Bottom">
+            <StatusBarItem>
+                <TextBlock x:Name="StatutPosition" Text="Ln 1, Col 1"/>
+            </StatusBarItem>
+            <Separator/>
+            <StatusBarItem>
+                <TextBlock x:Name="StatutLangage" Text="Texte brut"/>
+            </StatusBarItem>
+            <Separator/>
+            <StatusBarItem>
+                <TextBlock x:Name="StatutEncodage" Text="UTF-8"/>
+            </StatusBarItem>
+        </StatusBar>
+
+        <!-- Terminal provisoire (sera remplacé par TerminalControl de morelbrad27-lab) -->
         <DockPanel DockPanel.Dock="Bottom" Height="170">
             <TextBox x:Name="Saisie" DockPanel.Dock="Bottom" FontFamily="Consolas"
                      Background="#2D2D2D" Foreground="White" CaretBrush="White"
@@ -19,6 +78,8 @@
                      Background="#1E1E1E" Foreground="White"
                      VerticalScrollBarVisibility="Auto"/>
         </DockPanel>
+
+        <!-- Éditeur provisoire (sera remplacé par OngletsControl de DeboraQueen237) -->
         <avalon:TextEditor x:Name="Editeur" ShowLineNumbers="True"
                            FontFamily="Consolas" FontSize="14"/>
     </DockPanel>

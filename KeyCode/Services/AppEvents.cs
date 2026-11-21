@@ -10,6 +10,10 @@ public static class AppEvents
     public static event Action<string>? FichierDemande;
     public static void DemanderFichier(string chemin) => FichierDemande?.Invoke(chemin);
 
+    // Un fichier doit être ouvert à une ligne précise (chemin complet, numéro de ligne à partir de 1)
+    public static event Action<string, int>? FichierDemandeALaLigne;
+    public static void DemanderFichierALaLigne(string chemin, int ligne) => FichierDemandeALaLigne?.Invoke(chemin, ligne);
+
     // Un dossier a été ouvert dans l'explorateur (paramètre : chemin du dossier)
     public static event Action<string>? DossierOuvert;
     public static void SignalerDossierOuvert(string chemin) => DossierOuvert?.Invoke(chemin);
