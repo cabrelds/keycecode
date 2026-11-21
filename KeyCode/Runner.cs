@@ -105,10 +105,16 @@ public class Runner
             var sortie = Task.Run(() => Lire(processus.StandardOutput, surSortie));
             var erreur = Task.Run(() => Lire(processus.StandardError, surSortie));
 
-            processus.WaitForExit();
+           processus.WaitForExit();
             Task.WaitAll(sortie, erreur); // on attend d'avoir tout reçu
-            surFin();
-        }
+
+            // 9009 : code renvoyé par Windows quand le programme est introuvable
+            // (y compris le faux python.exe du Microsoft Store)
+            if (processus.ExitCode == 9009)
+                surSortie($"\n{langage.Nom} n'est pas installé ou introuvable (« {langage.Executable} »).\n");
+
+            surFin();        
+}
         catch (Win32Exception)
         {
             surSortie($"{langage.Nom} n'est pas installé (« {langage.Executable} » est introuvable).\n");
