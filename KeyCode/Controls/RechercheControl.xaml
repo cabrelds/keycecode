@@ -1,0 +1,112 @@
+﻿<UserControl x:Class="KeyCode.Controls.RechercheControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Visibility="Collapsed" HorizontalAlignment="Right"
+             VerticalAlignment="Top" Width="440" Margin="0,0,24,0"
+             PreviewKeyDown="Controle_PreviewKeyDown">
+    <UserControl.Resources>
+        <Style x:Key="BtnBarre" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="#CCCCCC"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="7,2"/>
+            <Setter Property="Margin" Value="2,0,0,0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Fond" Background="{TemplateBinding Background}"
+                                Padding="{TemplateBinding Padding}" CornerRadius="3">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Fond" Property="Background" Value="#3C3C3C"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="TglBarre" TargetType="ToggleButton">
+            <Setter Property="Foreground" Value="#CCCCCC"/>
+            <Setter Property="Margin" Value="2,0,0,0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Fond" Background="Transparent" BorderBrush="Transparent"
+                                BorderThickness="1" Padding="6,2" CornerRadius="3">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Fond" Property="Background" Value="#3C3C3C"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Fond" Property="Background" Value="#264F78"/>
+                                <Setter TargetName="Fond" Property="BorderBrush" Value="#007FD4"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="Champ" TargetType="TextBox">
+            <Setter Property="Background" Value="#3C3C3C"/>
+            <Setter Property="Foreground" Value="#CCCCCC"/>
+            <Setter Property="CaretBrush" Value="#CCCCCC"/>
+            <Setter Property="BorderBrush" Value="#3C3C3C"/>
+            <Setter Property="SelectionBrush" Value="#264F78"/>
+            <Setter Property="Padding" Value="4,3"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+    </UserControl.Resources>
+
+    <Border Background="#252526" BorderBrush="#454545" BorderThickness="1"
+            Padding="8,6" CornerRadius="0,0,4,4">
+        <StackPanel>
+            <!-- Ligne de recherche -->
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Content="✕" ToolTip="Fermer (Échap)"
+                        Style="{StaticResource BtnBarre}" Click="Fermer_Click"/>
+                <Button DockPanel.Dock="Right" Content="↓" ToolTip="Suivant (Entrée)"
+                        Style="{StaticResource BtnBarre}" Click="Suivant_Click"/>
+                <Button DockPanel.Dock="Right" Content="↑" ToolTip="Précédent (Maj+Entrée)"
+                        Style="{StaticResource BtnBarre}" Click="Precedent_Click"/>
+                <TextBlock x:Name="Compteur" DockPanel.Dock="Right" MinWidth="90"
+                           Foreground="#CCCCCC" FontSize="12" Margin="6,0"
+                           VerticalAlignment="Center" TextAlignment="Center"/>
+                <ToggleButton x:Name="BtnMot" DockPanel.Dock="Right" Content="ab"
+                              ToolTip="Mot entier" Style="{StaticResource TglBarre}"
+                              Click="Option_Click"/>
+                <ToggleButton x:Name="BtnCasse" DockPanel.Dock="Right" Content="Aa"
+                              ToolTip="Respecter la casse" Style="{StaticResource TglBarre}"
+                              Click="Option_Click"/>
+                <TextBox x:Name="Recherche" Style="{StaticResource Champ}"
+                         TextChanged="Recherche_TextChanged"
+                         PreviewKeyDown="Recherche_PreviewKeyDown"/>
+            </DockPanel>
+
+            <!-- Ligne de remplacement (Ctrl+H) -->
+            <DockPanel x:Name="LigneRemplacer" Margin="0,6,0,0" Visibility="Collapsed">
+                <Button DockPanel.Dock="Right" Content="Tout" ToolTip="Tout remplacer"
+                        Style="{StaticResource BtnBarre}" Click="RemplacerTout_Click"/>
+                <Button DockPanel.Dock="Right" Content="Remplacer" ToolTip="Remplacer (Entrée)"
+                        Style="{StaticResource BtnBarre}" Click="Remplacer_Click"/>
+                <TextBox x:Name="Remplacement" Style="{StaticResource Champ}"
+                         PreviewKeyDown="Remplacement_PreviewKeyDown"/>
+            </DockPanel>
+
+            <!-- Aller à la ligne (Ctrl+G) -->
+            <DockPanel x:Name="LigneAller" Margin="0,6,0,0" Visibility="Collapsed">
+                <TextBlock Text="Aller à la ligne :" Foreground="#CCCCCC" FontSize="12"
+                           Margin="0,0,8,0" VerticalAlignment="Center"/>
+                <TextBox x:Name="NumLigne" Style="{StaticResource Champ}"
+                         PreviewKeyDown="NumLigne_PreviewKeyDown"/>
+            </DockPanel>
+        </StackPanel>
+    </Border>
+</UserControl>
