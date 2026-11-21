@@ -79,7 +79,7 @@ public class Runner
         }
     }
 
-    private void Lancer(LangageInfo langage, string fichier, string dossier,
+   private void Lancer(LangageInfo langage, string fichier, string dossier,
                         Action<string> surSortie, Action surFin)
     {
         var psi = new ProcessStartInfo(langage.Executable, langage.Arguments.Replace("{f}", fichier))
@@ -97,17 +97,20 @@ public class Runner
 
         try
         {
-            _process = new Process { StartInfo = psi, EnableRaisingEvents = true };
-            _process.OutputDataReceived += (_, e) => { if (e.Data != null) surSortie(e.Data + "\n"); };
-            _process.ErrorDataReceived += (_, e) => { if (e.Data != null) surSortie(e.Data + "\n"); };
-            _process.Exited += (_, _) => surFin();
-            _process.Start();
-            _process.BeginOutputReadLine();
-            _process.BeginErrorReadLine();
+            var processus = new Process { StartInfo = psi };
+            processus.Start();
+            _process = processus;
+
+            // Lecture en direct, sans attendre les retours à la ligne
+            var sortie = Task.Run(() => Lire(processus.StandardOutput, surSortie));
+            var erreur = Task.Run(() => Lire(processus.StandardError, surSortie));
+
+            processus.WaitForExit();
+            Task.WaitAll(sortie, erreur); // on attend d'avoir tout reçu
+            surFin();
         }
         catch (Win32Exception)
         {
-            // Windows ne trouve pas le programme : le langage n'est pas installé
             surSortie($"{langage.Nom} n'est pas installé (« {langage.Executable} » est introuvable).\n");
             surFin();
         }
@@ -118,7 +121,15 @@ public class Runner
         }
     }
 
-    public void Envoyer(string texte)
+    // Transmet le texte dès qu'il arrive, même sans retour à la ligne
+    private static void Lire(StreamReader lecteur, Action<string> surSortie)
+    {
+        var tampon = new char[256];
+        int n;
+        while ((n = lecteur.Read(tampon, 0, tampon.Length)) > 0)
+            surSortie(new string(tampon, 0, n));
+    }    public void Envoyer(string texte)
+
     {
         if (EnCours) _process!.StandardInput.WriteLine(texte);
     }
