@@ -1,0 +1,215 @@
+<UserControl x:Class="KeyCode.Controls.OngletsControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Loaded="OngletsControl_Loaded"
+             Unloaded="OngletsControl_Unloaded">
+    <UserControl.Resources>
+        <!-- Ressources de couleurs dynamiques (mises à jour selon le thème Clair / Sombre) -->
+        <SolidColorBrush x:Key="CouleurFondRacine" Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="CouleurFondBarreOnglets" Color="#F3F3F3"/>
+        <SolidColorBrush x:Key="CouleurBordureOnglets" Color="#DDDDDD"/>
+        <SolidColorBrush x:Key="CouleurOngletInactif" Color="#ECECEC"/>
+        <SolidColorBrush x:Key="CouleurOngletSurvol" Color="#E2E2E2"/>
+        <SolidColorBrush x:Key="CouleurOngletActif" Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="CouleurAccentOnglet" Color="#007ACC"/>
+        <SolidColorBrush x:Key="CouleurTexteOnglet" Color="#444444"/>
+        <SolidColorBrush x:Key="CouleurTexteActif" Color="#111111"/>
+        <SolidColorBrush x:Key="CouleurTexteSecondaire" Color="#666666"/>
+        <SolidColorBrush x:Key="CouleurSurvolBouton" Color="#D6D6D6"/>
+
+        <!-- Style du bouton '+' dans la barre d'onglets -->
+        <Style x:Key="BoutonNouvelOnglet" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource CouleurTexteOnglet}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Width" Value="26"/>
+            <Setter Property="Height" Value="26"/>
+            <Setter Property="Margin" Value="4,2"/>
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Fond" Background="{TemplateBinding Background}" CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              Margin="0,-1,0,0"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Fond" Property="Background" Value="{DynamicResource CouleurSurvolBouton}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Style du bouton de fermeture '✕' sur chaque onglet -->
+        <Style x:Key="BoutonFermerOnglet" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource CouleurTexteOnglet}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Width" Value="18"/>
+            <Setter Property="Height" Value="18"/>
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Fond" Background="{TemplateBinding Background}" CornerRadius="3">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Fond" Property="Background" Value="{DynamicResource CouleurSurvolBouton}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Style du bouton sur l'écran vide -->
+        <Style x:Key="BoutonActionVide" TargetType="Button">
+            <Setter Property="Background" Value="{DynamicResource CouleurAccentOnglet}"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="14,7"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Fond" Background="{TemplateBinding Background}"
+                                Padding="{TemplateBinding Padding}" CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Fond" Property="Opacity" Value="0.88"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Style moderne des onglets -->
+        <Style TargetType="{x:Type TabItem}">
+            <Setter Property="Background" Value="{DynamicResource CouleurOngletInactif}"/>
+            <Setter Property="Foreground" Value="{DynamicResource CouleurTexteOnglet}"/>
+            <Setter Property="Padding" Value="10,6,6,6"/>
+            <Setter Property="Margin" Value="0"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type TabItem}">
+                        <Border x:Name="FondOnglet"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{DynamicResource CouleurBordureOnglets}"
+                                BorderThickness="0,0,1,0">
+                            <Grid>
+                                <Border x:Name="BarreAccent" Height="2" VerticalAlignment="Top"
+                                        Background="Transparent"/>
+                                <ContentPresenter ContentSource="Header"
+                                                  Margin="{TemplateBinding Padding}"
+                                                  HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"/>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsMouseOver" Value="True"/>
+                                    <Condition Property="IsSelected" Value="False"/>
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="FondOnglet" Property="Background" Value="{DynamicResource CouleurOngletSurvol}"/>
+                            </MultiTrigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Panel.ZIndex" Value="1"/>
+                                <Setter Property="Foreground" Value="{DynamicResource CouleurTexteActif}"/>
+                                <Setter TargetName="FondOnglet" Property="Background" Value="{DynamicResource CouleurOngletActif}"/>
+                                <Setter TargetName="BarreAccent" Property="Background" Value="{DynamicResource CouleurAccentOnglet}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Background="{DynamicResource CouleurFondRacine}">
+        <!-- TabControl contenant un éditeur AvalonEdit par onglet -->
+        <TabControl x:Name="Onglets"
+                    BorderThickness="0"
+                    Padding="0"
+                    Background="{DynamicResource CouleurFondRacine}"
+                    SelectionChanged="Onglets_SelectionChanged">
+            <TabControl.Template>
+                <ControlTemplate TargetType="{x:Type TabControl}">
+                    <Grid KeyboardNavigation.TabNavigation="Local">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Barre supérieure : onglets défilables + bouton '+' -->
+                        <Border Grid.Row="0"
+                                Background="{DynamicResource CouleurFondBarreOnglets}"
+                                BorderBrush="{DynamicResource CouleurBordureOnglets}"
+                                BorderThickness="0,0,0,1"
+                                MouseLeftButtonDown="BarreOnglets_MouseLeftButtonDown">
+                            <DockPanel>
+                                <Button DockPanel.Dock="Right"
+                                        Content="+"
+                                        ToolTip="Nouvel onglet (Ctrl+N)"
+                                        Style="{StaticResource BoutonNouvelOnglet}"
+                                        Click="BoutonNouveau_Click"/>
+
+                                <ScrollViewer x:Name="DefileurOnglets"
+                                              HorizontalScrollBarVisibility="Auto"
+                                              VerticalScrollBarVisibility="Disabled"
+                                              Focusable="False"
+                                              PreviewMouseWheel="DefileurOnglets_PreviewMouseWheel">
+                                    <TabPanel IsItemsHost="True"/>
+                                </ScrollViewer>
+                            </DockPanel>
+                        </Border>
+
+                        <!-- Contenu de l'onglet actif (TextEditor AvalonEdit) -->
+                        <Border Grid.Row="1" Background="{DynamicResource CouleurFondRacine}">
+                            <ContentPresenter x:Name="PART_SelectedContentHost"
+                                              ContentSource="SelectedContent"/>
+                        </Border>
+                    </Grid>
+                </ControlTemplate>
+            </TabControl.Template>
+        </TabControl>
+
+        <!-- État affiché lorsque tous les onglets sont fermés -->
+        <StackPanel x:Name="PanneauVide"
+                    Visibility="Collapsed"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center">
+            <TextBlock Text="Aucun fichier ouvert"
+                       FontSize="16"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource CouleurTexteOnglet}"
+                       HorizontalAlignment="Center"
+                       Margin="0,0,0,8"/>
+            <TextBlock Text="Ctrl+N : Nouveau fichier  •  Ctrl+O : Ouvrir un fichier  •  Ctrl+Tab : Onglet suivant"
+                       FontSize="12"
+                       Foreground="{DynamicResource CouleurTexteSecondaire}"
+                       HorizontalAlignment="Center"
+                       Margin="0,0,0,16"/>
+            <Button Content="Nouveau fichier"
+                    HorizontalAlignment="Center"
+                    Style="{StaticResource BoutonActionVide}"
+                    Click="BoutonNouveau_Click"/>
+        </StackPanel>
+    </Grid>
+</UserControl>
