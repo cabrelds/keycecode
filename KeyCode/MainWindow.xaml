@@ -1,7 +1,6 @@
 <Window x:Class="KeyCode.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:avalon="http://icsharpcode.net/sharpdevelop/avalonedit"
         xmlns:ctl="clr-namespace:KeyCode.Controls"
         Title="KeyCode" Height="700" Width="1100"
         AllowDrop="True" Drop="Fenetre_Drop"
@@ -18,6 +17,7 @@
                 <MenuItem Header="_Enregistrer" InputGestureText="Ctrl+S" Click="Enregistrer_Click"/>
                 <MenuItem Header="Tout enregistrer" Click="ToutEnregistrer_Click"/>
                 <Separator/>
+                <MenuItem Header="_Fermer l'onglet" InputGestureText="Ctrl+W" Click="FermerOnglet_Click"/>
                 <MenuItem x:Name="MenuRecents" Header="Fichiers _récents"/>
                 <Separator/>
                 <MenuItem Header="_Quitter" Click="Quitter_Click"/>
@@ -78,7 +78,7 @@
         <!-- Terminal (TerminalControl) -->
         <ctl:TerminalControl x:Name="Terminal" DockPanel.Dock="Bottom" Height="200"/>
 
-        <!-- Partie principale : explorateur à gauche, éditeur à droite -->
+        <!-- Partie principale : explorateur à gauche, onglets à droite -->
         <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition x:Name="ColonneGauche" Width="260"/>
@@ -100,11 +100,11 @@
             <GridSplitter x:Name="SeparateurGauche" Grid.Column="1" Width="5"
                           HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
 
-            <!-- Éditeur (sera remplacé par OngletsControl) + barre de recherche (RechercheControl) -->
+            <!-- Onglets (OngletsControl) + barre de recherche (RechercheControl) par-dessus.
+                 La marge du haut laisse visible la barre d'onglets, comme dans VS Code. -->
             <Grid Grid.Column="2">
-                <avalon:TextEditor x:Name="Editeur" ShowLineNumbers="True"
-                                   FontFamily="Consolas" FontSize="14"/>
-                <ctl:RechercheControl x:Name="Recherche"/>
+                <ctl:OngletsControl x:Name="Onglets"/>
+                <ctl:RechercheControl x:Name="Recherche" Margin="0,36,24,0"/>
             </Grid>
         </Grid>
     </DockPanel>
