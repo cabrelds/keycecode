@@ -205,7 +205,7 @@ namespace KeyCode.Controls
         private void Resultat_DoubleClic(object sender, MouseButtonEventArgs e)
         {
             if (ListeResultats.SelectedItem is Resultat r)
-                AppEvents.DemanderFichier(r.Chemin);
+                AppEvents.DemanderFichierALaLigne(r.Chemin, r.Ligne);
         }
     }
 }
