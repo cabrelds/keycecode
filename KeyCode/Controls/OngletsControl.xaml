@@ -17,15 +17,15 @@
         <SolidColorBrush x:Key="CouleurTexteSecondaire" Color="#666666"/>
         <SolidColorBrush x:Key="CouleurSurvolBouton" Color="#D6D6D6"/>
 
-        <!-- Style du bouton '+' dans la barre d'onglets -->
-        <Style x:Key="BoutonNouvelOnglet" TargetType="Button">
+        <!-- Style des boutons d'action dans la barre d'onglets ('+' et '▾') -->
+        <Style x:Key="BoutonBarreOnglets" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{DynamicResource CouleurTexteOnglet}"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Width" Value="26"/>
             <Setter Property="Height" Value="26"/>
-            <Setter Property="Margin" Value="4,2"/>
-            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="Margin" Value="2,2"/>
+            <Setter Property="FontSize" Value="14"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Focusable" Value="False"/>
@@ -102,7 +102,7 @@
         <Style TargetType="{x:Type TabItem}">
             <Setter Property="Background" Value="{DynamicResource CouleurOngletInactif}"/>
             <Setter Property="Foreground" Value="{DynamicResource CouleurTexteOnglet}"/>
-            <Setter Property="Padding" Value="10,6,6,6"/>
+            <Setter Property="Padding" Value="8,6,6,6"/>
             <Setter Property="Margin" Value="0"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Template">
@@ -157,7 +157,7 @@
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
 
-                        <!-- Barre supérieure : onglets défilables + bouton '+' -->
+                        <!-- Barre supérieure : onglets défilables + liste rapide + bouton '+' -->
                         <Border Grid.Row="0"
                                 Background="{DynamicResource CouleurFondBarreOnglets}"
                                 BorderBrush="{DynamicResource CouleurBordureOnglets}"
@@ -166,9 +166,17 @@
                             <DockPanel>
                                 <Button DockPanel.Dock="Right"
                                         Content="+"
+                                        Margin="0,2,4,2"
                                         ToolTip="Nouvel onglet (Ctrl+N)"
-                                        Style="{StaticResource BoutonNouvelOnglet}"
+                                        Style="{StaticResource BoutonBarreOnglets}"
                                         Click="BoutonNouveau_Click"/>
+
+                                <Button DockPanel.Dock="Right"
+                                        Content="▾"
+                                        FontSize="11"
+                                        ToolTip="Liste des onglets ouverts"
+                                        Style="{StaticResource BoutonBarreOnglets}"
+                                        Click="BoutonListeOnglets_Click"/>
 
                                 <ScrollViewer x:Name="DefileurOnglets"
                                               HorizontalScrollBarVisibility="Auto"
@@ -201,7 +209,7 @@
                        Foreground="{DynamicResource CouleurTexteOnglet}"
                        HorizontalAlignment="Center"
                        Margin="0,0,0,8"/>
-            <TextBlock Text="Ctrl+N : Nouveau fichier  •  Ctrl+O : Ouvrir un fichier  •  Ctrl+Tab : Onglet suivant"
+            <TextBlock Text="Ctrl+N : Nouveau  •  Ctrl+O : Ouvrir  •  Ctrl+Tab : Suivant  •  Ctrl+Maj+T : Rouvrir"
                        FontSize="12"
                        Foreground="{DynamicResource CouleurTexteSecondaire}"
                        HorizontalAlignment="Center"

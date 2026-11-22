@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -23,18 +24,29 @@ public partial class OngletsControl : UserControl
         public required TextEditor Editeur { get; init; }
         public string? Chemin { get; set; }
         public required string TitreBase { get; set; }
+        public required Border BadgeBordure { get; init; }
+        public required TextBlock BadgeTexte { get; init; }
         public required TextBlock TitreTextBlock { get; init; }
         public required StackPanel PanneauEntete { get; init; }
-        public required MenuItem MenuCopierChemin { get; init; }
         public EventHandler? ModifieHandler { get; set; }
+        public DateTime? DerniereModifDisqueUtc { get; set; }
+        public bool ExisteSurDisque { get; set; }
     }
+
+    private const int MaxHistoriqueFermetures = 20;
 
     private static readonly DependencyPropertyDescriptor? DescripteurModifie =
         DependencyPropertyDescriptor.FromProperty(TextEditor.IsModifiedProperty, typeof(TextEditor));
 
+    private readonly List<string> _historiqueFermetures = new();
+
     private Window? _fenetre;
     private bool _abonne;
     private bool _sessionRestauree;
+    private bool _reorganisationEnCours;
+    private bool _verificationExterneEnCours;
+    private Point _pointDepartGlisser;
+    private TabItem? _ongletGlisse;
 
     public OngletsControl()
     {
@@ -70,7 +82,10 @@ public partial class OngletsControl : UserControl
         {
             _fenetre = Window.GetWindow(this);
             if (_fenetre != null)
+            {
                 _fenetre.PreviewKeyDown += Fenetre_PreviewKeyDown;
+                _fenetre.Activated += Fenetre_Activated;
+            }
         }
 
         AppliquerTheme(ThemeManager.ThemeActuel);
@@ -87,6 +102,7 @@ public partial class OngletsControl : UserControl
         if (_fenetre != null)
         {
             _fenetre.PreviewKeyDown -= Fenetre_PreviewKeyDown;
+            _fenetre.Activated -= Fenetre_Activated;
             _fenetre = null;
         }
 
@@ -181,7 +197,7 @@ public partial class OngletsControl : UserControl
     public bool EnregistrerActif()
     {
         if (Onglets.SelectedItem is not TabItem onglet) return false;
-        return EnregistrerOnglet(onglet);
+        return EnregistrerOnglet(onglet, forcerDialogue: false);
     }
 
     /// <summary>Enregistre tous les onglets modifiés.</summary>
@@ -191,7 +207,7 @@ public partial class OngletsControl : UserControl
         {
             if (onglet.Tag is EtatOnglet etat && etat.Editeur.IsModified)
             {
-                if (!EnregistrerOnglet(onglet)) return;
+                if (!EnregistrerOnglet(onglet, forcerDialogue: false)) return;
             }
         }
     }
@@ -217,7 +233,7 @@ public partial class OngletsControl : UserControl
                 MessageBoxImage.Question);
 
             if (reponse == MessageBoxResult.Cancel) return false;
-            if (reponse == MessageBoxResult.Yes && !EnregistrerOnglet(onglet)) return false;
+            if (reponse == MessageBoxResult.Yes && !EnregistrerOnglet(onglet, forcerDialogue: false)) return false;
         }
 
         return true;
@@ -242,7 +258,6 @@ public partial class OngletsControl : UserControl
 
     private void RestaurerSession()
     {
-        // Si des onglets ont déjà été ajoutés avant Loaded, on les conserve
         if (Onglets.Items.Count > 0)
         {
             MettreAJourPanneauVide();
@@ -333,7 +348,11 @@ public partial class OngletsControl : UserControl
         editeur.IsModified = false;
 
         var onglet = CreerOnglet(editeur, cheminNormalise, Path.GetFileName(cheminNormalise));
+        if (onglet.Tag is EtatOnglet etat)
+            CapturerEtatDisque(etat);
+
         Onglets.Items.Add(onglet);
+        _historiqueFermetures.RemoveAll(c => string.Equals(c, cheminNormalise, StringComparison.OrdinalIgnoreCase));
 
         if (ajouterAuxRecents)
             AjouterAuxRecents(cheminNormalise);
@@ -353,6 +372,23 @@ public partial class OngletsControl : UserControl
 
     private TabItem CreerOnglet(TextEditor editeur, string? chemin, string titreBase)
     {
+        var badgeTexte = new TextBlock
+        {
+            FontSize = 9,
+            FontWeight = FontWeights.Bold,
+            Foreground = Brushes.White,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        var badgeBordure = new Border
+        {
+            CornerRadius = new CornerRadius(3),
+            Padding = new Thickness(4, 1, 4, 1),
+            Margin = new Thickness(0, 0, 6, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = badgeTexte
+        };
+
         var titreTextBlock = new TextBlock
         {
             VerticalAlignment = VerticalAlignment.Center,
@@ -366,26 +402,38 @@ public partial class OngletsControl : UserControl
             Style = (Style)FindResource("BoutonFermerOnglet")
         };
 
-        // Fond transparent pour capter le clic milieu sur toute la surface de l'en-tête
+        // Fond transparent pour capter clic milieu et glisser-déposer sur toute l'en-tête
         var panneauEntete = new StackPanel
         {
             Orientation = Orientation.Horizontal,
             Background = Brushes.Transparent
         };
+        panneauEntete.Children.Add(badgeBordure);
         panneauEntete.Children.Add(titreTextBlock);
         panneauEntete.Children.Add(boutonFermer);
 
+        var menuEnregistrer = new MenuItem { Header = "Enregistrer" };
+        var menuEnregistrerSous = new MenuItem { Header = "Enregistrer sous..." };
         var menuFermer = new MenuItem { Header = "Fermer" };
         var menuFermerAutres = new MenuItem { Header = "Fermer les autres" };
+        var menuFermerEnregistres = new MenuItem { Header = "Fermer les onglets enregistrés" };
         var menuFermerTout = new MenuItem { Header = "Fermer tout" };
+        var menuRouvrir = new MenuItem { Header = "Rouvrir l'onglet fermé (Ctrl+Maj+T)" };
         var menuCopierChemin = new MenuItem { Header = "Copier le chemin" };
+        var menuOuvrirDossier = new MenuItem { Header = "Ouvrir le dossier contenant" };
 
         var menuContextuel = new ContextMenu();
+        menuContextuel.Items.Add(menuEnregistrer);
+        menuContextuel.Items.Add(menuEnregistrerSous);
+        menuContextuel.Items.Add(new Separator());
         menuContextuel.Items.Add(menuFermer);
         menuContextuel.Items.Add(menuFermerAutres);
+        menuContextuel.Items.Add(menuFermerEnregistres);
         menuContextuel.Items.Add(menuFermerTout);
         menuContextuel.Items.Add(new Separator());
+        menuContextuel.Items.Add(menuRouvrir);
         menuContextuel.Items.Add(menuCopierChemin);
+        menuContextuel.Items.Add(menuOuvrirDossier);
         panneauEntete.ContextMenu = menuContextuel;
 
         var etat = new EtatOnglet
@@ -393,16 +441,19 @@ public partial class OngletsControl : UserControl
             Editeur = editeur,
             Chemin = chemin,
             TitreBase = titreBase,
+            BadgeBordure = badgeBordure,
+            BadgeTexte = badgeTexte,
             TitreTextBlock = titreTextBlock,
             PanneauEntete = panneauEntete,
-            MenuCopierChemin = menuCopierChemin
+            ExisteSurDisque = chemin != null && File.Exists(chemin)
         };
 
         var onglet = new TabItem
         {
             Header = panneauEntete,
             Content = editeur,
-            Tag = etat
+            Tag = etat,
+            AllowDrop = true
         };
 
         etat.ModifieHandler = (_, _) => MettreAJourEntete(onglet, etat);
@@ -423,65 +474,151 @@ public partial class OngletsControl : UserControl
             }
         };
 
+        // Réorganisation par glisser-déposer entre onglets
+        panneauEntete.PreviewMouseLeftButtonDown += (_, e) =>
+        {
+            if (EstDansBouton(e.OriginalSource as DependencyObject))
+            {
+                _ongletGlisse = null;
+                return;
+            }
+            _pointDepartGlisser = e.GetPosition(null);
+            _ongletGlisse = onglet;
+        };
+
+        panneauEntete.PreviewMouseMove += (_, e) =>
+        {
+            if (e.LeftButton != MouseButtonState.Pressed || _ongletGlisse == null) return;
+
+            var delta = e.GetPosition(null) - _pointDepartGlisser;
+            if (Math.Abs(delta.X) < SystemParameters.MinimumHorizontalDragDistance &&
+                Math.Abs(delta.Y) < SystemParameters.MinimumVerticalDragDistance)
+            {
+                return;
+            }
+
+            var ongletADeplacer = _ongletGlisse;
+            _ongletGlisse = null;
+            DragDrop.DoDragDrop(ongletADeplacer, ongletADeplacer, DragDropEffects.Move);
+        };
+
+        panneauEntete.PreviewMouseLeftButtonUp += (_, _) => _ongletGlisse = null;
+
+        onglet.DragOver += (_, e) =>
+        {
+            // Laisse passer les glisser-déposer de fichiers externes vers MainWindow
+            if (!e.Data.GetDataPresent(typeof(TabItem))) return;
+            e.Effects = DragDropEffects.Move;
+            e.Handled = true;
+        };
+
+        onglet.Drop += (_, e) =>
+        {
+            if (!e.Data.GetDataPresent(typeof(TabItem))) return;
+            if (e.Data.GetData(typeof(TabItem)) is TabItem source)
+                DeplacerOnglet(source, onglet);
+            e.Handled = true;
+        };
+
         menuContextuel.Opened += (_, _) =>
         {
+            var aChemin = !string.IsNullOrWhiteSpace(etat.Chemin);
             menuFermerAutres.IsEnabled = Onglets.Items.Count > 1;
-            menuCopierChemin.IsEnabled = !string.IsNullOrWhiteSpace(etat.Chemin);
+            menuFermerEnregistres.IsEnabled = Onglets.Items.OfType<TabItem>()
+                .Any(t => t.Tag is EtatOnglet et && !et.Editeur.IsModified);
+            menuRouvrir.IsEnabled = _historiqueFermetures.Count > 0;
+            menuCopierChemin.IsEnabled = aChemin;
+            menuOuvrirDossier.IsEnabled = aChemin && File.Exists(etat.Chemin);
         };
+
+        menuEnregistrer.Click += (_, _) => EnregistrerOnglet(onglet, forcerDialogue: false);
+        menuEnregistrerSous.Click += (_, _) => EnregistrerOnglet(onglet, forcerDialogue: true);
         menuFermer.Click += (_, _) => FermerOnglet(onglet);
         menuFermerAutres.Click += (_, _) => FermerAutresOnglets(onglet);
+        menuFermerEnregistres.Click += (_, _) => FermerOngletsEnregistres();
         menuFermerTout.Click += (_, _) => FermerTousOnglets();
+        menuRouvrir.Click += (_, _) => RouvrirDernierOngletFerme();
         menuCopierChemin.Click += (_, _) =>
         {
             if (!string.IsNullOrWhiteSpace(etat.Chemin))
                 Clipboard.SetText(etat.Chemin);
         };
+        menuOuvrirDossier.Click += (_, _) => OuvrirDossierContenant(etat.Chemin);
 
         MettreAJourEntete(onglet, etat);
         return onglet;
     }
 
-    private bool EnregistrerOnglet(TabItem onglet)
+    private void DeplacerOnglet(TabItem source, TabItem cible)
+    {
+        if (ReferenceEquals(source, cible)) return;
+
+        var indexSource = Onglets.Items.IndexOf(source);
+        var indexCible = Onglets.Items.IndexOf(cible);
+        if (indexSource < 0 || indexCible < 0) return;
+
+        _reorganisationEnCours = true;
+        try
+        {
+            Onglets.Items.RemoveAt(indexSource);
+            Onglets.Items.Insert(indexCible, source);
+            Onglets.SelectedItem = source;
+            source.BringIntoView();
+        }
+        finally
+        {
+            _reorganisationEnCours = false;
+        }
+    }
+
+    private bool EnregistrerOnglet(TabItem onglet, bool forcerDialogue)
     {
         if (onglet.Tag is not EtatOnglet etat) return false;
 
         var nouveauCheminAssigne = false;
-        if (etat.Chemin == null)
+        if (etat.Chemin == null || forcerDialogue)
         {
             Onglets.SelectedItem = onglet;
             onglet.BringIntoView();
 
             var dialogue = new SaveFileDialog
             {
-                Title = "Enregistrer le fichier",
+                Title = forcerDialogue ? "Enregistrer sous" : "Enregistrer le fichier",
                 Filter = "Tous les fichiers (*.*)|*.*|Python (*.py)|*.py|C# (*.cs)|*.cs|JavaScript (*.js)|*.js|Java (*.java)|*.java|C/C++ (*.c;*.cpp;*.h)|*.c;*.cpp;*.h|Texte (*.txt)|*.txt",
-                FileName = etat.TitreBase
+                FileName = etat.Chemin != null ? Path.GetFileName(etat.Chemin) : etat.TitreBase
             };
-            if (!string.IsNullOrWhiteSpace(Contexte.DossierRacine) && Directory.Exists(Contexte.DossierRacine))
+            if (etat.Chemin != null && Path.GetDirectoryName(etat.Chemin) is { } dossierActuel &&
+                Directory.Exists(dossierActuel))
+            {
+                dialogue.InitialDirectory = dossierActuel;
+            }
+            else if (!string.IsNullOrWhiteSpace(Contexte.DossierRacine) && Directory.Exists(Contexte.DossierRacine))
+            {
                 dialogue.InitialDirectory = Contexte.DossierRacine;
+            }
 
             if (dialogue.ShowDialog() != true) return false;
 
             var cheminChoisi = NormaliserChemin(dialogue.FileName) ?? dialogue.FileName;
 
-            // Si un autre onglet non modifié pointe déjà vers ce même chemin, on évite le doublon
             var doublon = TrouverOngletParChemin(cheminChoisi);
             if (doublon != null && !ReferenceEquals(doublon, onglet) &&
                 doublon.Tag is EtatOnglet etatDoublon && !etatDoublon.Editeur.IsModified)
             {
-                RetirerOngletSansConfirmation(doublon);
+                RetirerOngletSansConfirmation(doublon, memoriserFermeture: false);
             }
 
+            nouveauCheminAssigne = !string.Equals(etat.Chemin, cheminChoisi, StringComparison.OrdinalIgnoreCase);
             etat.Chemin = cheminChoisi;
             etat.TitreBase = Path.GetFileName(cheminChoisi);
             EditeurService.Configurer(etat.Editeur, etat.Chemin);
-            nouveauCheminAssigne = true;
         }
 
         try
         {
             etat.Editeur.Save(etat.Chemin);
             etat.Editeur.IsModified = false;
+            CapturerEtatDisque(etat);
         }
         catch (Exception ex)
         {
@@ -518,10 +655,10 @@ public partial class OngletsControl : UserControl
                 MessageBoxImage.Question);
 
             if (reponse == MessageBoxResult.Cancel) return false;
-            if (reponse == MessageBoxResult.Yes && !EnregistrerOnglet(onglet)) return false;
+            if (reponse == MessageBoxResult.Yes && !EnregistrerOnglet(onglet, forcerDialogue: false)) return false;
         }
 
-        RetirerOngletSansConfirmation(onglet);
+        RetirerOngletSansConfirmation(onglet, memoriserFermeture: true);
         return true;
     }
 
@@ -534,6 +671,15 @@ public partial class OngletsControl : UserControl
         }
     }
 
+    private void FermerOngletsEnregistres()
+    {
+        foreach (var onglet in Onglets.Items.OfType<TabItem>().ToList())
+        {
+            if (onglet.Tag is EtatOnglet etat && !etat.Editeur.IsModified)
+                RetirerOngletSansConfirmation(onglet, memoriserFermeture: true);
+        }
+    }
+
     private void FermerTousOnglets()
     {
         foreach (var onglet in Onglets.Items.OfType<TabItem>().ToList())
@@ -542,12 +688,18 @@ public partial class OngletsControl : UserControl
         }
     }
 
-    private void RetirerOngletSansConfirmation(TabItem onglet)
+    private void RetirerOngletSansConfirmation(TabItem onglet, bool memoriserFermeture)
     {
-        if (onglet.Tag is EtatOnglet etat && etat.ModifieHandler != null)
+        if (onglet.Tag is EtatOnglet etat)
         {
-            DescripteurModifie?.RemoveValueChanged(etat.Editeur, etat.ModifieHandler);
-            etat.ModifieHandler = null;
+            if (memoriserFermeture && !string.IsNullOrWhiteSpace(etat.Chemin))
+                EnregistrerDansHistoriqueFermeture(etat.Chemin);
+
+            if (etat.ModifieHandler != null)
+            {
+                DescripteurModifie?.RemoveValueChanged(etat.Editeur, etat.ModifieHandler);
+                etat.ModifieHandler = null;
+            }
         }
 
         Onglets.Items.Remove(onglet);
@@ -558,8 +710,129 @@ public partial class OngletsControl : UserControl
             DonnerFocusEditeur(etatActif.Editeur);
     }
 
+    private void EnregistrerDansHistoriqueFermeture(string chemin)
+    {
+        _historiqueFermetures.RemoveAll(c => string.Equals(c, chemin, StringComparison.OrdinalIgnoreCase));
+        _historiqueFermetures.Add(chemin);
+        if (_historiqueFermetures.Count > MaxHistoriqueFermetures)
+            _historiqueFermetures.RemoveAt(0);
+    }
+
+    /// <summary>Rouvre le dernier onglet fermé s'il existe encore sur disque.</summary>
+    public void RouvrirDernierOngletFerme()
+    {
+        while (_historiqueFermetures.Count > 0)
+        {
+            var dernier = _historiqueFermetures[^1];
+            _historiqueFermetures.RemoveAt(_historiqueFermetures.Count - 1);
+
+            if (!File.Exists(dernier)) continue;
+            OuvrirFichier(dernier);
+            return;
+        }
+    }
+
     // ------------------------------------------------------------------
-    // Helpers d'état, de contexte et de thème
+    // Détection des modifications externes sur disque
+    // ------------------------------------------------------------------
+
+    private static void CapturerEtatDisque(EtatOnglet etat)
+    {
+        if (string.IsNullOrWhiteSpace(etat.Chemin) || !File.Exists(etat.Chemin))
+        {
+            etat.ExisteSurDisque = false;
+            etat.DerniereModifDisqueUtc = null;
+            return;
+        }
+
+        etat.ExisteSurDisque = true;
+        etat.DerniereModifDisqueUtc = File.GetLastWriteTimeUtc(etat.Chemin);
+    }
+
+    private void VerifierModificationExterneOngletActif()
+    {
+        if (_verificationExterneEnCours) return;
+        if (Onglets.SelectedItem is not TabItem onglet || onglet.Tag is not EtatOnglet etat) return;
+        if (string.IsNullOrWhiteSpace(etat.Chemin)) return;
+
+        _verificationExterneEnCours = true;
+        try
+        {
+            if (!File.Exists(etat.Chemin))
+            {
+                if (!etat.ExisteSurDisque) return;
+                etat.ExisteSurDisque = false;
+                etat.DerniereModifDisqueUtc = null;
+
+                // Marque comme modifié pour éviter la perte silencieuse d'un fichier supprimé hors éditeur
+                etat.Editeur.IsModified = true;
+                MettreAJourEntete(onglet, etat);
+                return;
+            }
+
+            etat.ExisteSurDisque = true;
+            var dateDisqueUtc = File.GetLastWriteTimeUtc(etat.Chemin);
+            if (etat.DerniereModifDisqueUtc == null ||
+                Math.Abs((dateDisqueUtc - etat.DerniereModifDisqueUtc.Value).TotalMilliseconds) < 150)
+            {
+                return;
+            }
+
+            // Mémorise avant toute boîte de dialogue pour éviter une boucle sur Window.Activated
+            etat.DerniereModifDisqueUtc = dateDisqueUtc;
+
+            if (!etat.Editeur.IsModified)
+            {
+                RechargerDepuisDisque(onglet, etat);
+                return;
+            }
+
+            var reponse = MessageBox.Show(
+                $"Le fichier « {etat.TitreBase} » a été modifié en dehors de KeyCode.\n" +
+                "Voulez-vous recharger la version du disque (vos modifications locales non enregistrées seront perdues) ?",
+                "KeyCode",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (reponse == MessageBoxResult.Yes)
+                RechargerDepuisDisque(onglet, etat);
+        }
+        finally
+        {
+            _verificationExterneEnCours = false;
+        }
+    }
+
+    private void RechargerDepuisDisque(TabItem onglet, EtatOnglet etat)
+    {
+        if (string.IsNullOrWhiteSpace(etat.Chemin) || !File.Exists(etat.Chemin)) return;
+
+        var lignePrecedente = etat.Editeur.TextArea.Caret.Line;
+        try
+        {
+            etat.Editeur.Load(etat.Chemin);
+        }
+        catch (Exception)
+        {
+            return;
+        }
+
+        EditeurService.Configurer(etat.Editeur, etat.Chemin);
+        etat.Editeur.IsModified = false;
+        CapturerEtatDisque(etat);
+        MettreAJourEntete(onglet, etat);
+
+        if (etat.Editeur.Document.LineCount > 0)
+        {
+            var ligne = Math.Clamp(lignePrecedente, 1, etat.Editeur.Document.LineCount);
+            var docLigne = etat.Editeur.Document.GetLineByNumber(ligne);
+            etat.Editeur.TextArea.Caret.Offset = docLigne.Offset;
+            etat.Editeur.ScrollToLine(ligne);
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Helpers d'état, de contexte, de badge et de thème
     // ------------------------------------------------------------------
 
     private void SynchroniserContexte()
@@ -581,10 +854,45 @@ public partial class OngletsControl : UserControl
 
     private void MettreAJourEntete(TabItem onglet, EtatOnglet etat)
     {
+        var (sigle, couleurHex) = ObtenirBadgeLangage(etat.Chemin);
+        etat.BadgeTexte.Text = sigle;
+        var pinceau = new SolidColorBrush((Color)ColorConverter.ConvertFromString(couleurHex));
+        pinceau.Freeze();
+        etat.BadgeBordure.Background = pinceau;
+
         var modifie = etat.Editeur.IsModified;
         etat.TitreTextBlock.Text = modifie ? $"{etat.TitreBase} *" : etat.TitreBase;
         etat.PanneauEntete.ToolTip = etat.Chemin ?? "Nouveau fichier non enregistré";
         onglet.ToolTip = null;
+    }
+
+    private static (string Sigle, string CouleurHex) ObtenirBadgeLangage(string? chemin)
+    {
+        if (string.IsNullOrWhiteSpace(chemin)) return ("TXT", "#6E7681");
+
+        var ext = Path.GetExtension(chemin).ToLowerInvariant();
+        return ext switch
+        {
+            ".py" => ("PY", "#3572A5"),
+            ".cs" => ("C#", "#68217A"),
+            ".js" or ".mjs" or ".cjs" => ("JS", "#C99A14"),
+            ".ts" or ".tsx" => ("TS", "#3178C6"),
+            ".java" => ("JV", "#B07219"),
+            ".c" or ".h" => ("C", "#555555"),
+            ".cpp" or ".cc" or ".cxx" or ".hpp" => ("C++", "#E04A7A"),
+            ".php" => ("PHP", "#4F5D95"),
+            ".go" => ("GO", "#00ADD8"),
+            ".rs" => ("RS", "#B7410E"),
+            ".ps1" => ("PS", "#25548F"),
+            ".bat" or ".cmd" => ("BAT", "#4D4D4D"),
+            ".md" => ("MD", "#1F6FEB"),
+            ".json" => ("{}", "#2E8B57"),
+            ".xml" or ".xaml" or ".csproj" => ("<>", "#D96523"),
+            ".html" or ".htm" => ("HTM", "#E34C26"),
+            ".css" => ("CSS", "#563D7C"),
+            _ when ext.Length > 1 => (ext[1..].ToUpperInvariant()[..Math.Min(3, ext.Length - 1)], "#6E7681"),
+            _ => ("TXT", "#6E7681")
+        };
     }
 
     private void MettreAJourPanneauVide()
@@ -633,6 +941,32 @@ public partial class OngletsControl : UserControl
         catch (Exception)
         {
             return null;
+        }
+    }
+
+    private static bool EstDansBouton(DependencyObject? source)
+    {
+        while (source != null)
+        {
+            if (source is ButtonBase) return true;
+            source = VisualTreeHelper.GetParent(source);
+        }
+        return false;
+    }
+
+    private static void OuvrirDossierContenant(string? chemin)
+    {
+        if (string.IsNullOrWhiteSpace(chemin) || !File.Exists(chemin)) return;
+        try
+        {
+            Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{chemin}\"")
+            {
+                UseShellExecute = true
+            });
+        }
+        catch (Exception)
+        {
+            // Ignore si le gestionnaire de fichiers ne peut être lancé
         }
     }
 
@@ -689,6 +1023,7 @@ public partial class OngletsControl : UserControl
 
     private void Onglets_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        if (_reorganisationEnCours) return;
         // Ignore les événements SelectionChanged remontés depuis un contrôle interne de l'éditeur
         if (!ReferenceEquals(e.OriginalSource, Onglets)) return;
 
@@ -698,30 +1033,113 @@ public partial class OngletsControl : UserControl
         if (Onglets.SelectedItem is TabItem onglet)
         {
             onglet.BringIntoView();
+            VerifierModificationExterneOngletActif();
             if (onglet.Tag is EtatOnglet etat)
                 DonnerFocusEditeur(etat.Editeur);
         }
     }
 
+    private void Fenetre_Activated(object? sender, EventArgs e)
+    {
+        VerifierModificationExterneOngletActif();
+    }
+
     private void Fenetre_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key != Key.Tab) return;
-
         var mod = Keyboard.Modifiers;
         if ((mod & ModifierKeys.Control) == 0 || (mod & ModifierKeys.Alt) != 0) return;
 
-        if (Onglets.Items.Count > 1)
+        var touche = e.Key == Key.System ? e.SystemKey : e.Key;
+        var maj = (mod & ModifierKeys.Shift) != 0;
+
+        // Ctrl+Tab / Ctrl+Maj+Tab : onglet suivant / précédent
+        if (touche == Key.Tab)
         {
-            var decalage = (mod & ModifierKeys.Shift) != 0 ? -1 : 1;
-            var total = Onglets.Items.Count;
-            var index = Onglets.SelectedIndex < 0 ? 0 : Onglets.SelectedIndex;
-            Onglets.SelectedIndex = (index + decalage + total) % total;
+            if (Onglets.Items.Count > 1)
+            {
+                var decalage = maj ? -1 : 1;
+                var total = Onglets.Items.Count;
+                var index = Onglets.SelectedIndex < 0 ? 0 : Onglets.SelectedIndex;
+                Onglets.SelectedIndex = (index + decalage + total) % total;
+            }
+            e.Handled = true;
+            return;
         }
 
-        e.Handled = true;
+        // Ctrl+Maj+T : rouvrir le dernier onglet fermé
+        if (touche == Key.T && maj)
+        {
+            RouvrirDernierOngletFerme();
+            e.Handled = true;
+            return;
+        }
+
+        // Ctrl+1..9 : accès direct à un onglet par son rang (Ctrl+9 = dernier onglet)
+        var numero = ObtenirNumeroOnglet(touche);
+        if (numero > 0 && !maj && Onglets.Items.Count > 0)
+        {
+            var indexCible = numero == 9
+                ? Onglets.Items.Count - 1
+                : numero - 1;
+
+            if (indexCible < Onglets.Items.Count)
+                Onglets.SelectedIndex = indexCible;
+
+            e.Handled = true;
+        }
     }
 
+    private static int ObtenirNumeroOnglet(Key touche) => touche switch
+    {
+        Key.D1 or Key.NumPad1 => 1,
+        Key.D2 or Key.NumPad2 => 2,
+        Key.D3 or Key.NumPad3 => 3,
+        Key.D4 or Key.NumPad4 => 4,
+        Key.D5 or Key.NumPad5 => 5,
+        Key.D6 or Key.NumPad6 => 6,
+        Key.D7 or Key.NumPad7 => 7,
+        Key.D8 or Key.NumPad8 => 8,
+        Key.D9 or Key.NumPad9 => 9,
+        _ => 0
+    };
+
     private void BoutonNouveau_Click(object sender, RoutedEventArgs e) => NouvelOnglet();
+
+    private void BoutonListeOnglets_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button bouton) return;
+
+        var menu = new ContextMenu();
+        if (Onglets.Items.Count == 0)
+        {
+            menu.Items.Add(new MenuItem { Header = "(Aucun onglet ouvert)", IsEnabled = false });
+        }
+        else
+        {
+            foreach (var onglet in Onglets.Items.OfType<TabItem>())
+            {
+                if (onglet.Tag is not EtatOnglet etat) continue;
+                var nom = etat.Editeur.IsModified ? $"{etat.TitreBase} *" : etat.TitreBase;
+                var item = new MenuItem
+                {
+                    Header = nom.Replace("_", "__"),
+                    IsChecked = ReferenceEquals(Onglets.SelectedItem, onglet),
+                    ToolTip = etat.Chemin ?? "Nouveau fichier non enregistré"
+                };
+                var ongletCapture = onglet;
+                item.Click += (_, _) =>
+                {
+                    Onglets.SelectedItem = ongletCapture;
+                    ongletCapture.BringIntoView();
+                };
+                menu.Items.Add(item);
+            }
+        }
+
+        menu.PlacementTarget = bouton;
+        menu.Placement = PlacementMode.Bottom;
+        menu.IsOpen = true;
+    }
 
     private void BarreOnglets_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
