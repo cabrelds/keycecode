@@ -8,12 +8,11 @@ using KeyCode.Services;
 namespace KeyCode;
 
 /// <summary>
-/// Fenêtre principale (version provisoire : un seul éditeur, avec explorateur, recherche et terminal).
+/// Fenêtre principale : assemble l'explorateur, les onglets, les recherches et le terminal.
 /// Propriétaire : cabrelds.
 /// </summary>
 public partial class MainWindow : Window
 {
-    private string? _chemin;
     private TextEditor? _editeurSuivi;
     private double _largeurGauche = 260;
 
@@ -24,13 +23,15 @@ public partial class MainWindow : Window
         SettingsService.Charger();
         ThemeManager.Appliquer(SettingsService.Theme);
 
-        EditeurService.Configurer(Editeur, null);
-        Contexte.EditeurActif = Editeur;
-        Contexte.CheminActif = null;
+        // OngletsControl écoute lui-même AppEvents.FichierDemande et rouvre la session au chargement.
+        // La fenêtre ne gère que l'ouverture à une ligne précise (venant de la recherche dans les fichiers).
+        AppEvents.FichierDemandeALaLigne += (chemin, ligne) => Onglets.OuvrirFichierALaLigne(chemin, ligne);
 
-        // Tant que OngletsControl n'est pas fusionné, la fenêtre écoute elle-même les demandes d'ouverture
-        AppEvents.FichierDemande += OuvrirFichier;
-        AppEvents.FichierDemandeALaLigne += OuvrirFichierALaLigne;
+        // Mise à jour du menu des fichiers récents
+        AppEvents.FichierDemande += AjouterRecent;
+        AppEvents.FichierEnregistre += AjouterRecent;
+
+        // Barre de statut et titre
         AppEvents.EditeurActifChange += SuivreEditeur;
         AppEvents.DossierOuvert += _ => MettreAJourTitre();
 
@@ -50,23 +51,12 @@ public partial class MainWindow : Window
     // Fichier
     // ------------------------------------------------------------------
 
-    private void Nouveau_Click(object sender, RoutedEventArgs e) => NouveauFichier();
-
-    private void NouveauFichier()
-    {
-        if (!DemanderEnregistrement()) return;
-        Editeur.Clear();
-        Editeur.IsModified = false;
-        _chemin = null;
-        Contexte.CheminActif = null;
-        MettreAJourTitre();
-        MettreAJourStatut();
-    }
+    private void Nouveau_Click(object sender, RoutedEventArgs e) => Onglets.NouvelOnglet();
 
     private void Ouvrir_Click(object sender, RoutedEventArgs e)
     {
         var dlg = new OpenFileDialog();
-        if (dlg.ShowDialog() == true) OuvrirFichier(dlg.FileName);
+        if (dlg.ShowDialog() == true) AppEvents.DemanderFichier(dlg.FileName);
     }
 
     private void OuvrirDossier_Click(object sender, RoutedEventArgs e)
@@ -78,83 +68,9 @@ public partial class MainWindow : Window
         Explorateur.OuvrirDossier(dlg.FolderName);
     }
 
-    private void OuvrirFichier(string chemin)
-    {
-        if (!DemanderEnregistrement()) return;
-        try
-        {
-            Editeur.Load(chemin);
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"Impossible d'ouvrir le fichier :\n{ex.Message}", "KeyCode",
-                MessageBoxButton.OK, MessageBoxImage.Error);
-            return;
-        }
-        EditeurService.Configurer(Editeur, chemin);
-        Editeur.IsModified = false;
-        _chemin = chemin;
-        Contexte.CheminActif = chemin;
-        AjouterRecent(chemin);
-        MettreAJourTitre();
-        MettreAJourStatut();
-    }
-
-    /// <summary>Ouvre le fichier puis place le curseur sur la ligne demandée (résultat de recherche).</summary>
-    private void OuvrirFichierALaLigne(string chemin, int ligne)
-    {
-        // Même fichier déjà affiché : inutile de le recharger
-        if (!string.Equals(_chemin, chemin, StringComparison.OrdinalIgnoreCase))
-        {
-            OuvrirFichier(chemin);
-            // Annulé par l'utilisateur ou erreur d'ouverture
-            if (!string.Equals(_chemin, chemin, StringComparison.OrdinalIgnoreCase)) return;
-        }
-
-        ligne = Math.Clamp(ligne, 1, Editeur.Document.LineCount);
-        var l = Editeur.Document.GetLineByNumber(ligne);
-        Editeur.Select(l.Offset, l.Length); // surligne la ligne trouvée
-        Editeur.TextArea.Caret.Offset = l.Offset;
-        Editeur.ScrollToLine(ligne);
-        Editeur.TextArea.Focus();
-    }
-
-    private void Enregistrer_Click(object sender, RoutedEventArgs e) => Enregistrer();
-
-    private void ToutEnregistrer_Click(object sender, RoutedEventArgs e) => Enregistrer();
-
-    /// <summary>Enregistre le fichier courant. Retourne false si l'utilisateur annule.</summary>
-    private bool Enregistrer()
-    {
-        if (_chemin == null)
-        {
-            var dlg = new SaveFileDialog();
-            if (dlg.ShowDialog() != true) return false;
-            _chemin = dlg.FileName;
-            Contexte.CheminActif = _chemin;
-            EditeurService.Configurer(Editeur, _chemin);
-        }
-        Editeur.Save(_chemin);
-        Editeur.IsModified = false;
-        AjouterRecent(_chemin);
-        AppEvents.SignalerFichierEnregistre(_chemin);
-        MettreAJourTitre();
-        MettreAJourStatut();
-        return true;
-    }
-
-    /// <summary>Si le texte est modifié, propose d'enregistrer. Retourne false si l'utilisateur annule.</summary>
-    private bool DemanderEnregistrement()
-    {
-        if (!Editeur.IsModified) return true;
-        var nom = _chemin == null ? "Sans titre" : System.IO.Path.GetFileName(_chemin);
-        var rep = MessageBox.Show($"Enregistrer les modifications de « {nom} » ?", "KeyCode",
-            MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
-        if (rep == MessageBoxResult.Cancel) return false;
-        if (rep == MessageBoxResult.Yes) return Enregistrer();
-        return true;
-    }
-
+    private void Enregistrer_Click(object sender, RoutedEventArgs e) => Onglets.EnregistrerActif();
+    private void ToutEnregistrer_Click(object sender, RoutedEventArgs e) => Onglets.EnregistrerTout();
+    private void FermerOnglet_Click(object sender, RoutedEventArgs e) => Onglets.FermerOngletActif();
     private void Quitter_Click(object sender, RoutedEventArgs e) => Close();
 
     // ------------------------------------------------------------------
@@ -182,7 +98,7 @@ public partial class MainWindow : Window
         foreach (var chemin in liste.ToList())
         {
             var item = new MenuItem { Header = chemin.Replace("_", "__") };
-            item.Click += (_, _) => OuvrirFichier(chemin);
+            item.Click += (_, _) => AppEvents.DemanderFichier(chemin);
             MenuRecents.Items.Add(item);
         }
     }
@@ -197,6 +113,18 @@ public partial class MainWindow : Window
     private void Copier_Click(object sender, RoutedEventArgs e) => Contexte.EditeurActif?.Copy();
     private void Coller_Click(object sender, RoutedEventArgs e) => Contexte.EditeurActif?.Paste();
     private void ToutSelectionner_Click(object sender, RoutedEventArgs e) => Contexte.EditeurActif?.SelectAll();
+
+    // Ctrl+F, Ctrl+H et Ctrl+G sont captés directement par RechercheControl
+    private void Rechercher_Click(object sender, RoutedEventArgs e) => Recherche.Afficher(false);
+    private void Remplacer_Click(object sender, RoutedEventArgs e) => Recherche.Afficher(true);
+    private void RechercheFichiers_Click(object sender, RoutedEventArgs e) => AfficherRechercheFichiers();
+
+    private void AfficherRechercheFichiers()
+    {
+        // Si l'explorateur est masqué, on le réaffiche pour voir la recherche
+        if (PanneauGauche.Visibility != Visibility.Visible) BasculerExplorateur();
+        RechercheFichiers.Afficher();
+    }
 
     // ------------------------------------------------------------------
     // Affichage
@@ -219,38 +147,9 @@ public partial class MainWindow : Window
     {
         taille = Math.Clamp(taille, 8, 48);
         SettingsService.TaillePolice = taille;
+        // L'onglet actif change tout de suite ; ReconfigurerTous (nyangono) met à jour les autres onglets
         if (Contexte.EditeurActif != null) Contexte.EditeurActif.FontSize = taille;
         EditeurService.ReconfigurerTous();
-    }
-
-    // ------------------------------------------------------------------
-    // Exécuter (terminal provisoire)
-    // ------------------------------------------------------------------
-
-    private void Executer_Click(object sender, RoutedEventArgs e) => ExecuterFichier();
-
-    private void ExecuterFichier()
-    {
-        // Enregistrer d'abord ; Enregistrer retourne false si l'utilisateur annule
-        if (!Enregistrer()) return;
-        if (_chemin == null) return;
-        if (Terminal.Visibility != Visibility.Visible) Terminal.Visibility = Visibility.Visible;
-        Terminal.Executer(_chemin);
-    }
-
-    private void Arreter_Click(object sender, RoutedEventArgs e) => Terminal.Arreter();
-    private void EffacerTerminal_Click(object sender, RoutedEventArgs e) => Terminal.Effacer();
-
-    // Ctrl+F, Ctrl+H et Ctrl+G sont captés directement par RechercheControl
-    private void Rechercher_Click(object sender, RoutedEventArgs e) => Recherche.Afficher(false);
-    private void Remplacer_Click(object sender, RoutedEventArgs e) => Recherche.Afficher(true);
-    private void RechercheFichiers_Click(object sender, RoutedEventArgs e) => AfficherRechercheFichiers();
-
-    private void AfficherRechercheFichiers()
-    {
-        // Si l'explorateur est masqué, on le réaffiche pour voir la recherche
-        if (PanneauGauche.Visibility != Visibility.Visible) BasculerExplorateur();
-        RechercheFichiers.Afficher();
     }
 
     private void BasculerExplorateur_Click(object sender, RoutedEventArgs e) => BasculerExplorateur();
@@ -282,15 +181,34 @@ public partial class MainWindow : Window
     }
 
     // ------------------------------------------------------------------
+    // Exécuter
+    // ------------------------------------------------------------------
+
+    private void Executer_Click(object sender, RoutedEventArgs e) => ExecuterFichier();
+
+    private void ExecuterFichier()
+    {
+        // Enregistrer d'abord ; EnregistrerActif retourne false si aucun onglet ou si l'utilisateur annule
+        if (!Onglets.EnregistrerActif()) return;
+        if (Contexte.CheminActif == null) return;
+
+        if (Terminal.Visibility != Visibility.Visible) Terminal.Visibility = Visibility.Visible;
+        Terminal.Executer(Contexte.CheminActif);
+    }
+
+    private void Arreter_Click(object sender, RoutedEventArgs e) => Terminal.Arreter();
+    private void EffacerTerminal_Click(object sender, RoutedEventArgs e) => Terminal.Effacer();
+
+    // ------------------------------------------------------------------
     // Aide
     // ------------------------------------------------------------------
 
     private void Raccourcis_Click(object sender, RoutedEventArgs e)
     {
         MessageBox.Show(
-            "Ctrl+N : nouveau\nCtrl+O : ouvrir\nCtrl+S : enregistrer\nCtrl+W : fermer\n" +
-            "Ctrl+F : rechercher\nCtrl+H : remplacer\nCtrl+Maj+F : rechercher dans les fichiers\n" +
-            "F5 : exécuter",
+            "Ctrl+N : nouvel onglet\nCtrl+O : ouvrir\nCtrl+S : enregistrer\nCtrl+W : fermer l'onglet\n" +
+            "Ctrl+Tab : onglet suivant\nCtrl+F : rechercher\nCtrl+H : remplacer\nCtrl+G : aller à la ligne\n" +
+            "Ctrl+Maj+F : rechercher dans les fichiers\nF5 : exécuter",
             "Raccourcis clavier");
     }
 
@@ -319,12 +237,12 @@ public partial class MainWindow : Window
 
         switch (e.Key)
         {
-            case Key.N when !maj: NouveauFichier(); e.Handled = true; break;
+            case Key.N when !maj: Onglets.NouvelOnglet(); e.Handled = true; break;
             case Key.O when !maj: Ouvrir_Click(this, new RoutedEventArgs()); e.Handled = true; break;
-            case Key.S when !maj: Enregistrer(); e.Handled = true; break;
-            case Key.W when !maj: NouveauFichier(); e.Handled = true; break;
+            case Key.S when !maj: Onglets.EnregistrerActif(); e.Handled = true; break;
+            case Key.W when !maj: Onglets.FermerOngletActif(); e.Handled = true; break;
             case Key.F when maj: AfficherRechercheFichiers(); e.Handled = true; break;
-            // Ctrl+F, Ctrl+H, Ctrl+G : gérés par RechercheControl
+            // Ctrl+F, Ctrl+H, Ctrl+G : gérés par RechercheControl ; Ctrl+Tab : géré par OngletsControl
         }
     }
 
@@ -336,7 +254,7 @@ public partial class MainWindow : Window
         {
             if (System.IO.File.Exists(chemin))
             {
-                OuvrirFichier(chemin);
+                AppEvents.DemanderFichier(chemin);
             }
             else if (System.IO.Directory.Exists(chemin))
             {
@@ -348,7 +266,8 @@ public partial class MainWindow : Window
 
     private void Fenetre_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
-        if (!DemanderEnregistrement())
+        // PeutFermer demande d'enregistrer les onglets modifiés ; false = l'utilisateur a annulé
+        if (!Onglets.PeutFermer())
         {
             e.Cancel = true;
             return;
@@ -363,7 +282,7 @@ public partial class MainWindow : Window
 
     private void MettreAJourTitre()
     {
-        var nom = _chemin == null ? "Sans titre" : System.IO.Path.GetFileName(_chemin);
+        var nom = Contexte.CheminActif == null ? "Sans titre" : System.IO.Path.GetFileName(Contexte.CheminActif);
         Title = Contexte.DossierRacine == null
             ? $"{nom} - KeyCode"
             : $"{nom} - {System.IO.Path.GetFileName(Contexte.DossierRacine)} - KeyCode";
@@ -380,6 +299,7 @@ public partial class MainWindow : Window
             _editeurSuivi.TextArea.Caret.PositionChanged += Caret_PositionChanged;
 
         MettreAJourStatut();
+        MettreAJourTitre();
     }
 
     private void Caret_PositionChanged(object? sender, EventArgs e) => MettreAJourStatut();
