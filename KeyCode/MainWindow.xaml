@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:avalon="http://icsharpcode.net/sharpdevelop/avalonedit"
         xmlns:ctl="clr-namespace:KeyCode.Controls"
-        Title="KeyCode" Height="650" Width="1000"
+        Title="KeyCode" Height="700" Width="1100"
         AllowDrop="True" Drop="Fenetre_Drop"
         PreviewKeyDown="Fenetre_PreviewKeyDown"
         Closing="Fenetre_Closing">
@@ -34,6 +34,7 @@
                 <Separator/>
                 <MenuItem Header="_Rechercher" InputGestureText="Ctrl+F" Click="Rechercher_Click"/>
                 <MenuItem Header="Re_mplacer" InputGestureText="Ctrl+H" Click="Remplacer_Click"/>
+                <MenuItem Header="Rechercher dans les _fichiers" InputGestureText="Ctrl+Maj+F" Click="RechercheFichiers_Click"/>
             </MenuItem>
             <MenuItem Header="_Affichage">
                 <MenuItem Header="_Thème">
@@ -45,8 +46,8 @@
                     <MenuItem Header="Réduire" Click="ZoomMoins_Click"/>
                     <MenuItem Header="Taille normale" Click="ZoomNormal_Click"/>
                 </MenuItem>
-                <!-- Désactivé tant que l'explorateur n'est pas fusionné -->
-                <MenuItem Header="Afficher/masquer l'_explorateur" IsEnabled="False"/>
+                <MenuItem Header="Afficher/masquer l'_explorateur" Click="BasculerExplorateur_Click"/>
+                <MenuItem Header="Afficher/masquer le _terminal" Click="BasculerTerminal_Click"/>
             </MenuItem>
             <MenuItem Header="E_xécuter">
                 <MenuItem Header="_Exécuter le fichier" InputGestureText="F5" Click="Executer_Click"/>
@@ -74,14 +75,37 @@
             </StatusBarItem>
         </StatusBar>
 
-        <!-- Terminal (TerminalControl de morelbrad27-lab) -->
+        <!-- Terminal (TerminalControl) -->
         <ctl:TerminalControl x:Name="Terminal" DockPanel.Dock="Bottom" Height="200"/>
 
-        <!-- Éditeur (sera remplacé par OngletsControl) + barre de recherche (RechercheControl) -->
+        <!-- Partie principale : explorateur à gauche, éditeur à droite -->
         <Grid>
-            <avalon:TextEditor x:Name="Editeur" ShowLineNumbers="True"
-                               FontFamily="Consolas" FontSize="14"/>
-            <ctl:RechercheControl x:Name="Recherche"/>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="ColonneGauche" Width="260"/>
+                <ColumnDefinition x:Name="ColonneSeparateur" Width="5"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Gauche : explorateur + recherche dans les fichiers (masquée au départ) -->
+            <Grid x:Name="PanneauGauche" Grid.Column="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <ctl:ExplorateurControl x:Name="Explorateur" Grid.Row="0"/>
+                <ctl:RechercheFichiersControl x:Name="RechercheFichiers" Grid.Row="1"
+                                              Height="260" Visibility="Collapsed"/>
+            </Grid>
+
+            <GridSplitter x:Name="SeparateurGauche" Grid.Column="1" Width="5"
+                          HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
+
+            <!-- Éditeur (sera remplacé par OngletsControl) + barre de recherche (RechercheControl) -->
+            <Grid Grid.Column="2">
+                <avalon:TextEditor x:Name="Editeur" ShowLineNumbers="True"
+                                   FontFamily="Consolas" FontSize="14"/>
+                <ctl:RechercheControl x:Name="Recherche"/>
+            </Grid>
         </Grid>
     </DockPanel>
 </Window>

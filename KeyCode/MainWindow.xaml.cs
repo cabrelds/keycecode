@@ -8,13 +8,14 @@ using KeyCode.Services;
 namespace KeyCode;
 
 /// <summary>
-/// Fenêtre principale (version provisoire : un seul éditeur, avec TerminalControl et RechercheControl).
+/// Fenêtre principale (version provisoire : un seul éditeur, avec explorateur, recherche et terminal).
 /// Propriétaire : cabrelds.
 /// </summary>
 public partial class MainWindow : Window
 {
     private string? _chemin;
     private TextEditor? _editeurSuivi;
+    private double _largeurGauche = 260;
 
     public MainWindow()
     {
@@ -29,7 +30,16 @@ public partial class MainWindow : Window
 
         // Tant que OngletsControl n'est pas fusionné, la fenêtre écoute elle-même les demandes d'ouverture
         AppEvents.FichierDemande += OuvrirFichier;
+        AppEvents.FichierDemandeALaLigne += OuvrirFichierALaLigne;
         AppEvents.EditeurActifChange += SuivreEditeur;
+        AppEvents.DossierOuvert += _ => MettreAJourTitre();
+
+        // Réouvre le dernier dossier s'il existe encore
+        if (!string.IsNullOrEmpty(SettingsService.DernierDossier)
+            && System.IO.Directory.Exists(SettingsService.DernierDossier))
+        {
+            Explorateur.OuvrirDossier(SettingsService.DernierDossier);
+        }
 
         SuivreEditeur();
         ConstruireMenuRecents();
@@ -63,11 +73,9 @@ public partial class MainWindow : Window
     {
         var dlg = new OpenFolderDialog();
         if (dlg.ShowDialog() != true) return;
-        // Sera remplacé par Explorateur.OuvrirDossier(...) après la fusion de l'explorateur
-        Contexte.DossierRacine = dlg.FolderName;
         SettingsService.DernierDossier = dlg.FolderName;
-        AppEvents.SignalerDossierOuvert(dlg.FolderName);
-        MettreAJourTitre();
+        // OuvrirDossier met à jour Contexte.DossierRacine et signale DossierOuvert
+        Explorateur.OuvrirDossier(dlg.FolderName);
     }
 
     private void OuvrirFichier(string chemin)
@@ -90,6 +98,25 @@ public partial class MainWindow : Window
         AjouterRecent(chemin);
         MettreAJourTitre();
         MettreAJourStatut();
+    }
+
+    /// <summary>Ouvre le fichier puis place le curseur sur la ligne demandée (résultat de recherche).</summary>
+    private void OuvrirFichierALaLigne(string chemin, int ligne)
+    {
+        // Même fichier déjà affiché : inutile de le recharger
+        if (!string.Equals(_chemin, chemin, StringComparison.OrdinalIgnoreCase))
+        {
+            OuvrirFichier(chemin);
+            // Annulé par l'utilisateur ou erreur d'ouverture
+            if (!string.Equals(_chemin, chemin, StringComparison.OrdinalIgnoreCase)) return;
+        }
+
+        ligne = Math.Clamp(ligne, 1, Editeur.Document.LineCount);
+        var l = Editeur.Document.GetLineByNumber(ligne);
+        Editeur.Select(l.Offset, l.Length); // surligne la ligne trouvée
+        Editeur.TextArea.Caret.Offset = l.Offset;
+        Editeur.ScrollToLine(ligne);
+        Editeur.TextArea.Focus();
     }
 
     private void Enregistrer_Click(object sender, RoutedEventArgs e) => Enregistrer();
@@ -197,7 +224,7 @@ public partial class MainWindow : Window
     }
 
     // ------------------------------------------------------------------
-    // Exécuter
+    // Exécuter (terminal provisoire)
     // ------------------------------------------------------------------
 
     private void Executer_Click(object sender, RoutedEventArgs e) => ExecuterFichier();
@@ -207,6 +234,7 @@ public partial class MainWindow : Window
         // Enregistrer d'abord ; Enregistrer retourne false si l'utilisateur annule
         if (!Enregistrer()) return;
         if (_chemin == null) return;
+        if (Terminal.Visibility != Visibility.Visible) Terminal.Visibility = Visibility.Visible;
         Terminal.Executer(_chemin);
     }
 
@@ -216,6 +244,42 @@ public partial class MainWindow : Window
     // Ctrl+F, Ctrl+H et Ctrl+G sont captés directement par RechercheControl
     private void Rechercher_Click(object sender, RoutedEventArgs e) => Recherche.Afficher(false);
     private void Remplacer_Click(object sender, RoutedEventArgs e) => Recherche.Afficher(true);
+    private void RechercheFichiers_Click(object sender, RoutedEventArgs e) => AfficherRechercheFichiers();
+
+    private void AfficherRechercheFichiers()
+    {
+        // Si l'explorateur est masqué, on le réaffiche pour voir la recherche
+        if (PanneauGauche.Visibility != Visibility.Visible) BasculerExplorateur();
+        RechercheFichiers.Afficher();
+    }
+
+    private void BasculerExplorateur_Click(object sender, RoutedEventArgs e) => BasculerExplorateur();
+
+    private void BasculerExplorateur()
+    {
+        if (PanneauGauche.Visibility == Visibility.Visible)
+        {
+            _largeurGauche = ColonneGauche.ActualWidth;
+            PanneauGauche.Visibility = Visibility.Collapsed;
+            SeparateurGauche.Visibility = Visibility.Collapsed;
+            ColonneGauche.Width = new GridLength(0);
+            ColonneSeparateur.Width = new GridLength(0);
+        }
+        else
+        {
+            PanneauGauche.Visibility = Visibility.Visible;
+            SeparateurGauche.Visibility = Visibility.Visible;
+            ColonneGauche.Width = new GridLength(_largeurGauche);
+            ColonneSeparateur.Width = new GridLength(5);
+        }
+    }
+
+    private void BasculerTerminal_Click(object sender, RoutedEventArgs e)
+    {
+        Terminal.Visibility = Terminal.Visibility == Visibility.Visible
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+    }
 
     // ------------------------------------------------------------------
     // Aide
@@ -259,6 +323,7 @@ public partial class MainWindow : Window
             case Key.O when !maj: Ouvrir_Click(this, new RoutedEventArgs()); e.Handled = true; break;
             case Key.S when !maj: Enregistrer(); e.Handled = true; break;
             case Key.W when !maj: NouveauFichier(); e.Handled = true; break;
+            case Key.F when maj: AfficherRechercheFichiers(); e.Handled = true; break;
             // Ctrl+F, Ctrl+H, Ctrl+G : gérés par RechercheControl
         }
     }
@@ -269,7 +334,15 @@ public partial class MainWindow : Window
         if (e.Data.GetData(DataFormats.FileDrop) is not string[] chemins) return;
         foreach (var chemin in chemins)
         {
-            if (System.IO.File.Exists(chemin)) OuvrirFichier(chemin);
+            if (System.IO.File.Exists(chemin))
+            {
+                OuvrirFichier(chemin);
+            }
+            else if (System.IO.Directory.Exists(chemin))
+            {
+                SettingsService.DernierDossier = chemin;
+                Explorateur.OuvrirDossier(chemin);
+            }
         }
     }
 
