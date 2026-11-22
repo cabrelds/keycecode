@@ -1,0 +1,21 @@
+<UserControl x:Class="KeyCode.Controls.ExplorateurControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid>
+        <TreeView x:Name="Arbre"
+                  BorderThickness="0"
+                  TreeViewItem.Expanded="Noeud_Ouvert"
+                  MouseDoubleClick="Arbre_DoubleClic"
+                  PreviewMouseRightButtonDown="Arbre_ClicDroitPrealable">
+            <TreeView.ContextMenu>
+                <ContextMenu Opened="Menu_Ouvert">
+                    <MenuItem x:Name="MenuNouveauFichier" Header="Nouveau fichier" Click="NouveauFichier_Click"/>
+                    <MenuItem x:Name="MenuNouveauDossier" Header="Nouveau dossier" Click="NouveauDossier_Click"/>
+                    <Separator/>
+                    <MenuItem x:Name="MenuRenommer" Header="Renommer" Click="Renommer_Click"/>
+                    <MenuItem x:Name="MenuSupprimer" Header="Supprimer" Click="Supprimer_Click"/>
+                </ContextMenu>
+            </TreeView.ContextMenu>
+        </TreeView>
+    </Grid>
+</UserControl>
