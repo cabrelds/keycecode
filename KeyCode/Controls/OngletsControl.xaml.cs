@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using ICSharpCode.AvalonEdit;
 using KeyCode.Services;
@@ -14,14 +15,14 @@ using Microsoft.Win32;
 namespace KeyCode.Controls;
 
 /// <summary>
-/// Contrôle de gestion des onglets d'éditeurs et de la restauration de session.
+/// Contrôle de gestion des onglets d'éditeurs (ou visionneurs image/binaire) et de la restauration de session.
 /// Propriétaire : DeboraQueen237.
 /// </summary>
 public partial class OngletsControl : UserControl
 {
     private sealed class EtatOnglet
     {
-        public required TextEditor Editeur { get; init; }
+        public TextEditor? Editeur { get; init; }
         public string? Chemin { get; set; }
         public required string TitreBase { get; set; }
         public required Border BadgeBordure { get; init; }
@@ -34,6 +35,12 @@ public partial class OngletsControl : UserControl
     }
 
     private const int MaxHistoriqueFermetures = 20;
+    private const long TailleMaxTexte = 15 * 1024 * 1024;
+
+    private static readonly HashSet<string> _extensionsImages = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".ico"
+    };
 
     private static readonly DependencyPropertyDescriptor? DescripteurModifie =
         DependencyPropertyDescriptor.FromProperty(TextEditor.IsModifiedProperty, typeof(TextEditor));
@@ -62,7 +69,8 @@ public partial class OngletsControl : UserControl
     {
         if (_abonne) return;
         AppEvents.FichierDemande += SurFichierDemande;
-        AppEvents.ThemeChange += SurThemeChange;
+        AppEvents.FichierRenomme += SurFichierRenomme;
+        AppEvents.FichierSupprime += SurFichierSupprime;
         _abonne = true;
     }
 
@@ -70,7 +78,8 @@ public partial class OngletsControl : UserControl
     {
         if (!_abonne) return;
         AppEvents.FichierDemande -= SurFichierDemande;
-        AppEvents.ThemeChange -= SurThemeChange;
+        AppEvents.FichierRenomme -= SurFichierRenomme;
+        AppEvents.FichierSupprime -= SurFichierSupprime;
         _abonne = false;
     }
 
@@ -87,8 +96,6 @@ public partial class OngletsControl : UserControl
                 _fenetre.Activated += Fenetre_Activated;
             }
         }
-
-        AppliquerTheme(ThemeManager.ThemeActuel);
 
         if (!_sessionRestauree)
         {
@@ -116,36 +123,74 @@ public partial class OngletsControl : UserControl
             Dispatcher.Invoke(() => OuvrirFichier(chemin));
             return;
         }
-
         OuvrirFichier(chemin);
     }
 
-    private void SurThemeChange(string theme)
+    private void SurFichierRenomme(string ancienChemin, string nouveauChemin)
     {
-        if (!Dispatcher.CheckAccess())
+        Dispatcher.InvokeAsync(() =>
         {
-            Dispatcher.InvokeAsync(() => AppliquerTheme(theme));
-            return;
-        }
+            var normAncien = NormaliserChemin(ancienChemin);
+            var normNouveau = NormaliserChemin(nouveauChemin);
+            if (normAncien == null || normNouveau == null) return;
 
-        AppliquerTheme(theme);
+            var onglet = TrouverOngletParChemin(normAncien);
+            if (onglet?.Tag is not EtatOnglet etat) return;
+
+            etat.Chemin = normNouveau;
+            etat.TitreBase = Path.GetFileName(normNouveau);
+            if (etat.Editeur != null)
+                EditeurService.Configurer(etat.Editeur, normNouveau);
+            CapturerEtatDisque(etat);
+            MettreAJourEntete(onglet, etat);
+            DiagnosticService.SupprimerFichier(normAncien);
+
+            if (ReferenceEquals(Onglets.SelectedItem, onglet))
+            {
+                Contexte.CheminActif = normNouveau;
+                MettreAJourFilAriane(normNouveau);
+                AppEvents.SignalerEditeurActifChange();
+            }
+            SauvegarderEtatSession();
+        });
+    }
+
+    private void SurFichierSupprime(string chemin)
+    {
+        Dispatcher.InvokeAsync(() =>
+        {
+            var norm = NormaliserChemin(chemin);
+            if (norm == null) return;
+            DiagnosticService.SupprimerFichier(norm);
+
+            var onglet = TrouverOngletParChemin(norm);
+            if (onglet?.Tag is not EtatOnglet etat) return;
+
+            if (etat.Editeur != null && etat.Editeur.IsModified)
+            {
+                etat.ExisteSurDisque = false;
+                MettreAJourEntete(onglet, etat);
+            }
+            else
+            {
+                RetirerOngletSansConfirmation(onglet, memoriserFermeture: false);
+            }
+        });
     }
 
     // ------------------------------------------------------------------
-    // API publique (contrats)
+    // API publique (contrats conservés)
     // ------------------------------------------------------------------
 
-    /// <summary>Ouvre un fichier dans un nouvel onglet, ou active son onglet s'il est déjà ouvert.</summary>
     public void OuvrirFichier(string chemin)
     {
         OuvrirFichierInterne(chemin, ajouterAuxRecents: true, selectionner: true, silencieux: false);
     }
 
-    /// <summary>Ouvre un fichier et positionne le curseur à la ligne indiquée (à partir de 1).</summary>
     public void OuvrirFichierALaLigne(string chemin, int ligne)
     {
         var onglet = OuvrirFichierInterne(chemin, ajouterAuxRecents: true, selectionner: true, silencieux: false);
-        if (onglet?.Tag is not EtatOnglet etat) return;
+        if (onglet?.Tag is not EtatOnglet etat || etat.Editeur == null) return;
 
         var editeur = etat.Editeur;
         if (editeur.Document == null || editeur.Document.LineCount == 0) return;
@@ -157,7 +202,6 @@ public partial class OngletsControl : UserControl
         editeur.TextArea.Caret.Offset = ligneDoc.Offset;
         editeur.ScrollToLine(ligneCible);
 
-        // Diffère le défilement après la mise en page si l'éditeur vient juste d'être créé
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
         {
             if (!ReferenceEquals(Onglets.SelectedItem, onglet)) return;
@@ -167,15 +211,11 @@ public partial class OngletsControl : UserControl
         });
     }
 
-    /// <summary>Crée et active un nouvel onglet vide.</summary>
     public void NouvelOnglet()
     {
-        var editeur = new TextEditor();
-        EditeurService.Configurer(editeur, null);
-        editeur.IsModified = false;
-
+        var editeur = CreerEditeur(null);
         var titreBase = ProchainTitreSansTitre();
-        var onglet = CreerOnglet(editeur, null, titreBase);
+        var onglet = CreerOnglet(editeur, editeur, null, titreBase);
 
         Onglets.Items.Add(onglet);
         Onglets.SelectedItem = onglet;
@@ -183,44 +223,40 @@ public partial class OngletsControl : UserControl
 
         MettreAJourPanneauVide();
         SynchroniserContexte();
+        SauvegarderEtatSession();
         DonnerFocusEditeur(editeur);
     }
 
-    /// <summary>Ferme l'onglet actif après confirmation d'enregistrement si nécessaire.</summary>
     public void FermerOngletActif()
     {
         if (Onglets.SelectedItem is TabItem onglet)
             FermerOnglet(onglet);
     }
 
-    /// <summary>Enregistre l'onglet actif. Retourne false si aucun onglet ou si l'utilisateur annule.</summary>
     public bool EnregistrerActif()
     {
         if (Onglets.SelectedItem is not TabItem onglet) return false;
         return EnregistrerOnglet(onglet, forcerDialogue: false);
     }
 
-    /// <summary>Enregistre tous les onglets modifiés.</summary>
     public void EnregistrerTout()
     {
         foreach (var onglet in Onglets.Items.OfType<TabItem>().ToList())
         {
-            if (onglet.Tag is EtatOnglet etat && etat.Editeur.IsModified)
+            if (onglet.Tag is EtatOnglet etat && etat.Editeur is { IsModified: true })
             {
                 if (!EnregistrerOnglet(onglet, forcerDialogue: false)) return;
             }
         }
     }
 
-    /// <summary>
-    /// Vérifie si les onglets modifiés peuvent être fermés en proposant l'enregistrement.
-    /// Retourne false si l'utilisateur annule.
-    /// </summary>
     public bool PeutFermer()
     {
+        SauvegarderEtatSession();
+
         foreach (var onglet in Onglets.Items.OfType<TabItem>().ToList())
         {
-            if (onglet.Tag is not EtatOnglet etat || !etat.Editeur.IsModified)
+            if (onglet.Tag is not EtatOnglet etat || etat.Editeur is not { IsModified: true })
                 continue;
 
             Onglets.SelectedItem = onglet;
@@ -239,7 +275,6 @@ public partial class OngletsControl : UserControl
         return true;
     }
 
-    /// <summary>Retourne la liste des chemins des fichiers actuellement ouverts dans les onglets.</summary>
     public List<string> ObtenirCheminsOuverts()
     {
         var chemins = new List<string>();
@@ -248,12 +283,23 @@ public partial class OngletsControl : UserControl
             if (onglet.Tag is EtatOnglet etat && !string.IsNullOrWhiteSpace(etat.Chemin))
                 chemins.Add(etat.Chemin);
         }
-
         return chemins;
     }
 
+    public void RouvrirDernierOngletFerme()
+    {
+        while (_historiqueFermetures.Count > 0)
+        {
+            var dernier = _historiqueFermetures[^1];
+            _historiqueFermetures.RemoveAt(_historiqueFermetures.Count - 1);
+            if (!File.Exists(dernier)) continue;
+            OuvrirFichier(dernier);
+            return;
+        }
+    }
+
     // ------------------------------------------------------------------
-    // Restauration de session et gestion interne des onglets
+    // Restauration de session et création des éditeurs / visionneurs
     // ------------------------------------------------------------------
 
     private void RestaurerSession()
@@ -265,29 +311,69 @@ public partial class OngletsControl : UserControl
             return;
         }
 
-        var fichiers = (SettingsService.DerniersFichiers ?? new List<string>()).ToList();
-        TabItem? premierRestaure = null;
+        var source = SettingsService.OngletsOuverts is { Count: > 0 }
+            ? SettingsService.OngletsOuverts
+            : SettingsService.DerniersFichiers;
+
+        var fichiers = (source ?? new List<string>()).ToList();
+        var restaures = new List<TabItem>();
 
         foreach (var chemin in fichiers)
         {
             if (string.IsNullOrWhiteSpace(chemin) || !File.Exists(chemin)) continue;
             var onglet = OuvrirFichierInterne(chemin, ajouterAuxRecents: false, selectionner: false, silencieux: true);
-            premierRestaure ??= onglet;
+            if (onglet != null) restaures.Add(onglet);
         }
 
-        if (premierRestaure != null)
+        if (restaures.Count > 0)
         {
-            Onglets.SelectedItem = premierRestaure;
-            premierRestaure.BringIntoView();
+            var idx = Math.Clamp(SettingsService.OngletActifIndex, 0, restaures.Count - 1);
+            var cible = restaures[idx];
+            Onglets.SelectedItem = cible;
+            cible.BringIntoView();
             MettreAJourPanneauVide();
             SynchroniserContexte();
-            if (premierRestaure.Tag is EtatOnglet etat)
+            if (cible.Tag is EtatOnglet etat && etat.Editeur != null)
                 DonnerFocusEditeur(etat.Editeur);
         }
         else
         {
             NouvelOnglet();
         }
+    }
+
+    private TextEditor CreerEditeur(string? chemin)
+    {
+        var editeur = new TextEditor();
+        EditeurService.Configurer(editeur, chemin);
+        editeur.IsModified = false;
+
+        var menu = new ContextMenu();
+        var itemCouper = new MenuItem { Header = "Couper", InputGestureText = "Ctrl+X" };
+        var itemCopier = new MenuItem { Header = "Copier", InputGestureText = "Ctrl+C" };
+        var itemColler = new MenuItem { Header = "Coller", InputGestureText = "Ctrl+V" };
+        var itemTout = new MenuItem { Header = "Tout sélectionner", InputGestureText = "Ctrl+A" };
+        var itemExpliquer = new MenuItem { Header = "✦ Expliquer avec Gemini" };
+        var itemCorriger = new MenuItem { Header = "✦ Corriger avec Gemini" };
+
+        itemCouper.Click += (_, _) => editeur.Cut();
+        itemCopier.Click += (_, _) => editeur.Copy();
+        itemColler.Click += (_, _) => editeur.Paste();
+        itemTout.Click += (_, _) => editeur.SelectAll();
+        itemExpliquer.Click += (_, _) => AppEvents.DemanderAideIA("Explique clairement ce code et son fonctionnement.", Contexte.CheminActif, editeur.TextArea.Caret.Line);
+        itemCorriger.Click += (_, _) => AppEvents.DemanderAideIA("Analyse ce code, détecte les erreurs potentielles et propose une version corrigée.", Contexte.CheminActif, editeur.TextArea.Caret.Line);
+
+        menu.Items.Add(itemCouper);
+        menu.Items.Add(itemCopier);
+        menu.Items.Add(itemColler);
+        menu.Items.Add(new Separator());
+        menu.Items.Add(itemTout);
+        menu.Items.Add(new Separator());
+        menu.Items.Add(itemExpliquer);
+        menu.Items.Add(itemCorriger);
+        editeur.ContextMenu = menu;
+
+        return editeur;
     }
 
     private TabItem? OuvrirFichierInterne(string chemin, bool ajouterAuxRecents, bool selectionner, bool silencieux)
@@ -313,7 +399,7 @@ public partial class OngletsControl : UserControl
                 Onglets.SelectedItem = existant;
                 existant.BringIntoView();
                 SynchroniserContexte();
-                if (existant.Tag is EtatOnglet etatExistant)
+                if (existant.Tag is EtatOnglet etatExistant && etatExistant.Editeur != null)
                     DonnerFocusEditeur(etatExistant.Editeur);
             }
             return existant;
@@ -329,25 +415,41 @@ public partial class OngletsControl : UserControl
             return null;
         }
 
-        var editeur = new TextEditor();
-        try
+        var ext = Path.GetExtension(cheminNormalise);
+        TabItem onglet;
+
+        if (_extensionsImages.Contains(ext))
         {
-            editeur.Load(cheminNormalise);
+            var contenuImage = CreerVisionneurImage(cheminNormalise);
+            onglet = CreerOnglet(contenuImage, null, cheminNormalise, Path.GetFileName(cheminNormalise));
         }
-        catch (Exception ex)
+        else if (EstFichierBinaireOuTropGros(cheminNormalise, out var raison))
         {
-            if (!silencieux)
+            var contenuBinaire = CreerPanneauBinaire(cheminNormalise, raison);
+            onglet = CreerOnglet(contenuBinaire, null, cheminNormalise, Path.GetFileName(cheminNormalise));
+        }
+        else
+        {
+            var editeur = CreerEditeur(null);
+            try
             {
-                MessageBox.Show($"Impossible d'ouvrir le fichier :\n{ex.Message}", "KeyCode",
-                    MessageBoxButton.OK, MessageBoxImage.Error);
+                editeur.Load(cheminNormalise);
             }
-            return null;
+            catch (Exception ex)
+            {
+                if (!silencieux)
+                {
+                    MessageBox.Show($"Impossible d'ouvrir le fichier :\n{ex.Message}", "KeyCode",
+                        MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+                return null;
+            }
+
+            EditeurService.Configurer(editeur, cheminNormalise);
+            editeur.IsModified = false;
+            onglet = CreerOnglet(editeur, editeur, cheminNormalise, Path.GetFileName(cheminNormalise));
         }
 
-        EditeurService.Configurer(editeur, cheminNormalise);
-        editeur.IsModified = false;
-
-        var onglet = CreerOnglet(editeur, cheminNormalise, Path.GetFileName(cheminNormalise));
         if (onglet.Tag is EtatOnglet etat)
             CapturerEtatDisque(etat);
 
@@ -364,13 +466,144 @@ public partial class OngletsControl : UserControl
             Onglets.SelectedItem = onglet;
             onglet.BringIntoView();
             SynchroniserContexte();
-            DonnerFocusEditeur(editeur);
+            if (onglet.Tag is EtatOnglet etatSel && etatSel.Editeur != null)
+                DonnerFocusEditeur(etatSel.Editeur);
         }
 
+        SauvegarderEtatSession();
         return onglet;
     }
 
-    private TabItem CreerOnglet(TextEditor editeur, string? chemin, string titreBase)
+    private static UIElement CreerVisionneurImage(string chemin)
+    {
+        try
+        {
+            var bmp = new BitmapImage();
+            bmp.BeginInit();
+            bmp.CacheOption = BitmapCacheOption.OnLoad;
+            bmp.UriSource = new Uri(chemin, UriKind.Absolute);
+            bmp.EndInit();
+            bmp.Freeze();
+
+            var pile = new StackPanel
+            {
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(24)
+            };
+            pile.Children.Add(new Image
+            {
+                Source = bmp,
+                Stretch = Stretch.Uniform,
+                MaxWidth = 900,
+                MaxHeight = 600
+            });
+            pile.Children.Add(new TextBlock
+            {
+                Text = $"{Path.GetFileName(chemin)}  —  {bmp.PixelWidth} × {bmp.PixelHeight} px",
+                Foreground = ThemeManager.Pinceau("ThemeTexteSecondaire"),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 12, 0, 0),
+                FontSize = 12
+            });
+
+            return new ScrollViewer
+            {
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Content = pile
+            };
+        }
+        catch (Exception ex)
+        {
+            return CreerPanneauBinaire(chemin, $"Impossible de décoder l'image : {ex.Message}");
+        }
+    }
+
+    private static UIElement CreerPanneauBinaire(string chemin, string raison)
+    {
+        var pile = new StackPanel
+        {
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(24)
+        };
+        pile.Children.Add(new TextBlock
+        {
+            Text = Path.GetFileName(chemin),
+            FontSize = 16,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = ThemeManager.Pinceau("ThemeTexte"),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(0, 0, 0, 6)
+        });
+        pile.Children.Add(new TextBlock
+        {
+            Text = raison,
+            FontSize = 12,
+            Foreground = ThemeManager.Pinceau("ThemeTexteSecondaire"),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(0, 0, 0, 14)
+        });
+
+        var bouton = new Button
+        {
+            Content = "Ouvrir avec l'application par défaut",
+            Style = (Style)Application.Current.FindResource("BoutonPrimaireVsCode"),
+            HorizontalAlignment = HorizontalAlignment.Center
+        };
+        bouton.Click += (_, _) =>
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo(chemin) { UseShellExecute = true });
+            }
+            catch (Exception) { }
+        };
+        pile.Children.Add(bouton);
+        return pile;
+    }
+
+    private static bool EstFichierBinaireOuTropGros(string chemin, out string raison)
+    {
+        raison = "";
+        try
+        {
+            var info = new FileInfo(chemin);
+            if (info.Length > TailleMaxTexte)
+            {
+                raison = $"Fichier volumineux ({info.Length / (1024 * 1024)} Mo) non chargé dans l'éditeur.";
+                return true;
+            }
+
+            var ext = info.Extension.ToLowerInvariant();
+            if (ext is ".exe" or ".dll" or ".pdb" or ".zip" or ".7z" or ".rar" or ".pdf" or ".bin" or ".obj" or ".lib" or ".so")
+            {
+                raison = $"Fichier binaire ({ext}) : aperçu texte indisponible.";
+                return true;
+            }
+
+            using var flux = File.OpenRead(chemin);
+            var tampon = new byte[4096];
+            var lus = flux.Read(tampon, 0, tampon.Length);
+            for (var i = 0; i < lus; i++)
+            {
+                if (tampon[i] == 0)
+                {
+                    raison = "Ce fichier contient des données binaires et ne peut pas être édité comme du texte.";
+                    return true;
+                }
+            }
+            return false;
+        }
+        catch (Exception ex)
+        {
+            raison = $"Lecture impossible : {ex.Message}";
+            return true;
+        }
+    }
+
+    private TabItem CreerOnglet(UIElement contenu, TextEditor? editeur, string? chemin, string titreBase)
     {
         var badgeTexte = new TextBlock
         {
@@ -402,7 +635,6 @@ public partial class OngletsControl : UserControl
             Style = (Style)FindResource("BoutonFermerOnglet")
         };
 
-        // Fond transparent pour capter clic milieu et glisser-déposer sur toute l'en-tête
         var panneauEntete = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -451,13 +683,16 @@ public partial class OngletsControl : UserControl
         var onglet = new TabItem
         {
             Header = panneauEntete,
-            Content = editeur,
+            Content = contenu,
             Tag = etat,
             AllowDrop = true
         };
 
-        etat.ModifieHandler = (_, _) => MettreAJourEntete(onglet, etat);
-        DescripteurModifie?.AddValueChanged(editeur, etat.ModifieHandler);
+        if (editeur != null)
+        {
+            etat.ModifieHandler = (_, _) => MettreAJourEntete(onglet, etat);
+            DescripteurModifie?.AddValueChanged(editeur, etat.ModifieHandler);
+        }
 
         boutonFermer.Click += (_, e) =>
         {
@@ -474,7 +709,6 @@ public partial class OngletsControl : UserControl
             }
         };
 
-        // Réorganisation par glisser-déposer entre onglets
         panneauEntete.PreviewMouseLeftButtonDown += (_, e) =>
         {
             if (EstDansBouton(e.OriginalSource as DependencyObject))
@@ -489,13 +723,10 @@ public partial class OngletsControl : UserControl
         panneauEntete.PreviewMouseMove += (_, e) =>
         {
             if (e.LeftButton != MouseButtonState.Pressed || _ongletGlisse == null) return;
-
             var delta = e.GetPosition(null) - _pointDepartGlisser;
             if (Math.Abs(delta.X) < SystemParameters.MinimumHorizontalDragDistance &&
                 Math.Abs(delta.Y) < SystemParameters.MinimumVerticalDragDistance)
-            {
                 return;
-            }
 
             var ongletADeplacer = _ongletGlisse;
             _ongletGlisse = null;
@@ -506,7 +737,6 @@ public partial class OngletsControl : UserControl
 
         onglet.DragOver += (_, e) =>
         {
-            // Laisse passer les glisser-déposer de fichiers externes vers MainWindow
             if (!e.Data.GetDataPresent(typeof(TabItem))) return;
             e.Effects = DragDropEffects.Move;
             e.Handled = true;
@@ -522,10 +752,13 @@ public partial class OngletsControl : UserControl
 
         menuContextuel.Opened += (_, _) =>
         {
+            var estTexte = etat.Editeur != null;
             var aChemin = !string.IsNullOrWhiteSpace(etat.Chemin);
+            menuEnregistrer.IsEnabled = estTexte;
+            menuEnregistrerSous.IsEnabled = estTexte;
             menuFermerAutres.IsEnabled = Onglets.Items.Count > 1;
             menuFermerEnregistres.IsEnabled = Onglets.Items.OfType<TabItem>()
-                .Any(t => t.Tag is EtatOnglet et && !et.Editeur.IsModified);
+                .Any(t => t.Tag is EtatOnglet et && et.Editeur is not { IsModified: true });
             menuRouvrir.IsEnabled = _historiqueFermetures.Count > 0;
             menuCopierChemin.IsEnabled = aChemin;
             menuOuvrirDossier.IsEnabled = aChemin && File.Exists(etat.Chemin);
@@ -564,6 +797,7 @@ public partial class OngletsControl : UserControl
             Onglets.Items.Insert(indexCible, source);
             Onglets.SelectedItem = source;
             source.BringIntoView();
+            SauvegarderEtatSession();
         }
         finally
         {
@@ -574,6 +808,7 @@ public partial class OngletsControl : UserControl
     private bool EnregistrerOnglet(TabItem onglet, bool forcerDialogue)
     {
         if (onglet.Tag is not EtatOnglet etat) return false;
+        if (etat.Editeur == null) return true; // Visionneur image/binaire : rien à sauvegarder
 
         var nouveauCheminAssigne = false;
         if (etat.Chemin == null || forcerDialogue)
@@ -584,7 +819,7 @@ public partial class OngletsControl : UserControl
             var dialogue = new SaveFileDialog
             {
                 Title = forcerDialogue ? "Enregistrer sous" : "Enregistrer le fichier",
-                Filter = "Tous les fichiers (*.*)|*.*|Python (*.py)|*.py|C# (*.cs)|*.cs|JavaScript (*.js)|*.js|Java (*.java)|*.java|C/C++ (*.c;*.cpp;*.h)|*.c;*.cpp;*.h|Texte (*.txt)|*.txt",
+                Filter = "Tous les fichiers (*.*)|*.*|Python (*.py)|*.py|C# (*.cs)|*.cs|JavaScript (*.js)|*.js|TypeScript (*.ts)|*.ts|HTML (*.html)|*.html|CSS (*.css)|*.css|Java (*.java)|*.java|C/C++ (*.c;*.cpp;*.h)|*.c;*.cpp;*.h|Texte (*.txt)|*.txt",
                 FileName = etat.Chemin != null ? Path.GetFileName(etat.Chemin) : etat.TitreBase
             };
             if (etat.Chemin != null && Path.GetDirectoryName(etat.Chemin) is { } dossierActuel &&
@@ -603,7 +838,7 @@ public partial class OngletsControl : UserControl
 
             var doublon = TrouverOngletParChemin(cheminChoisi);
             if (doublon != null && !ReferenceEquals(doublon, onglet) &&
-                doublon.Tag is EtatOnglet etatDoublon && !etatDoublon.Editeur.IsModified)
+                doublon.Tag is EtatOnglet etatDoublon && etatDoublon.Editeur is not { IsModified: true })
             {
                 RetirerOngletSansConfirmation(doublon, memoriserFermeture: false);
             }
@@ -629,10 +864,12 @@ public partial class OngletsControl : UserControl
 
         MettreAJourEntete(onglet, etat);
         AjouterAuxRecents(etat.Chemin);
+        SauvegarderEtatSession();
 
         if (ReferenceEquals(Onglets.SelectedItem, onglet))
         {
             Contexte.CheminActif = etat.Chemin;
+            MettreAJourFilAriane(etat.Chemin);
             if (nouveauCheminAssigne)
                 AppEvents.SignalerEditeurActifChange();
         }
@@ -643,7 +880,7 @@ public partial class OngletsControl : UserControl
 
     private bool FermerOnglet(TabItem onglet)
     {
-        if (onglet.Tag is EtatOnglet etat && etat.Editeur.IsModified)
+        if (onglet.Tag is EtatOnglet etat && etat.Editeur is { IsModified: true })
         {
             Onglets.SelectedItem = onglet;
             onglet.BringIntoView();
@@ -675,7 +912,7 @@ public partial class OngletsControl : UserControl
     {
         foreach (var onglet in Onglets.Items.OfType<TabItem>().ToList())
         {
-            if (onglet.Tag is EtatOnglet etat && !etat.Editeur.IsModified)
+            if (onglet.Tag is EtatOnglet etat && etat.Editeur is not { IsModified: true })
                 RetirerOngletSansConfirmation(onglet, memoriserFermeture: true);
         }
     }
@@ -695,7 +932,7 @@ public partial class OngletsControl : UserControl
             if (memoriserFermeture && !string.IsNullOrWhiteSpace(etat.Chemin))
                 EnregistrerDansHistoriqueFermeture(etat.Chemin);
 
-            if (etat.ModifieHandler != null)
+            if (etat.Editeur != null && etat.ModifieHandler != null)
             {
                 DescripteurModifie?.RemoveValueChanged(etat.Editeur, etat.ModifieHandler);
                 etat.ModifieHandler = null;
@@ -705,8 +942,9 @@ public partial class OngletsControl : UserControl
         Onglets.Items.Remove(onglet);
         MettreAJourPanneauVide();
         SynchroniserContexte();
+        SauvegarderEtatSession();
 
-        if (Onglets.SelectedItem is TabItem actif && actif.Tag is EtatOnglet etatActif)
+        if (Onglets.SelectedItem is TabItem actif && actif.Tag is EtatOnglet etatActif && etatActif.Editeur != null)
             DonnerFocusEditeur(etatActif.Editeur);
     }
 
@@ -718,22 +956,14 @@ public partial class OngletsControl : UserControl
             _historiqueFermetures.RemoveAt(0);
     }
 
-    /// <summary>Rouvre le dernier onglet fermé s'il existe encore sur disque.</summary>
-    public void RouvrirDernierOngletFerme()
+    private void SauvegarderEtatSession()
     {
-        while (_historiqueFermetures.Count > 0)
-        {
-            var dernier = _historiqueFermetures[^1];
-            _historiqueFermetures.RemoveAt(_historiqueFermetures.Count - 1);
-
-            if (!File.Exists(dernier)) continue;
-            OuvrirFichier(dernier);
-            return;
-        }
+        SettingsService.OngletsOuverts = ObtenirCheminsOuverts();
+        SettingsService.OngletActifIndex = Math.Max(0, Onglets.SelectedIndex);
     }
 
     // ------------------------------------------------------------------
-    // Détection des modifications externes sur disque
+    // Détection des modifications externes
     // ------------------------------------------------------------------
 
     private static void CapturerEtatDisque(EtatOnglet etat)
@@ -753,7 +983,7 @@ public partial class OngletsControl : UserControl
     {
         if (_verificationExterneEnCours) return;
         if (Onglets.SelectedItem is not TabItem onglet || onglet.Tag is not EtatOnglet etat) return;
-        if (string.IsNullOrWhiteSpace(etat.Chemin)) return;
+        if (string.IsNullOrWhiteSpace(etat.Chemin) || etat.Editeur == null) return;
 
         _verificationExterneEnCours = true;
         try
@@ -763,8 +993,6 @@ public partial class OngletsControl : UserControl
                 if (!etat.ExisteSurDisque) return;
                 etat.ExisteSurDisque = false;
                 etat.DerniereModifDisqueUtc = null;
-
-                // Marque comme modifié pour éviter la perte silencieuse d'un fichier supprimé hors éditeur
                 etat.Editeur.IsModified = true;
                 MettreAJourEntete(onglet, etat);
                 return;
@@ -778,7 +1006,6 @@ public partial class OngletsControl : UserControl
                 return;
             }
 
-            // Mémorise avant toute boîte de dialogue pour éviter une boucle sur Window.Activated
             etat.DerniereModifDisqueUtc = dateDisqueUtc;
 
             if (!etat.Editeur.IsModified)
@@ -805,17 +1032,11 @@ public partial class OngletsControl : UserControl
 
     private void RechargerDepuisDisque(TabItem onglet, EtatOnglet etat)
     {
-        if (string.IsNullOrWhiteSpace(etat.Chemin) || !File.Exists(etat.Chemin)) return;
+        if (etat.Editeur == null || string.IsNullOrWhiteSpace(etat.Chemin) || !File.Exists(etat.Chemin)) return;
 
         var lignePrecedente = etat.Editeur.TextArea.Caret.Line;
-        try
-        {
-            etat.Editeur.Load(etat.Chemin);
-        }
-        catch (Exception)
-        {
-            return;
-        }
+        try { etat.Editeur.Load(etat.Chemin); }
+        catch (Exception) { return; }
 
         EditeurService.Configurer(etat.Editeur, etat.Chemin);
         etat.Editeur.IsModified = false;
@@ -832,7 +1053,7 @@ public partial class OngletsControl : UserControl
     }
 
     // ------------------------------------------------------------------
-    // Helpers d'état, de contexte, de badge et de thème
+    // Helpers d'état, fil d'Ariane, contexte et badges
     // ------------------------------------------------------------------
 
     private void SynchroniserContexte()
@@ -841,15 +1062,49 @@ public partial class OngletsControl : UserControl
         var editeur = etat?.Editeur;
         var chemin = etat?.Chemin;
 
+        MettreAJourFilAriane(chemin);
+
         if (ReferenceEquals(Contexte.EditeurActif, editeur) &&
             string.Equals(Contexte.CheminActif, chemin, StringComparison.OrdinalIgnoreCase))
         {
             return;
         }
 
-        // Important : CheminActif doit être mis à jour AVANT EditeurActif (qui déclenche EditeurActifChange)
         Contexte.CheminActif = chemin;
         Contexte.EditeurActif = editeur;
+    }
+
+    private void MettreAJourFilAriane(string? chemin)
+    {
+        Onglets.ApplyTemplate();
+        var barre = Onglets.Template?.FindName("BarreFilAriane", Onglets) as Border;
+        var texte = Onglets.Template?.FindName("TexteFilAriane", Onglets) as TextBlock;
+        if (barre == null || texte == null) return;
+
+        if (Onglets.Items.Count == 0)
+        {
+            barre.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        barre.Visibility = Visibility.Visible;
+        if (string.IsNullOrWhiteSpace(chemin))
+        {
+            texte.Text = "Sans titre";
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(Contexte.DossierRacine) &&
+            chemin.StartsWith(Contexte.DossierRacine, StringComparison.OrdinalIgnoreCase))
+        {
+            var relatif = Path.GetRelativePath(Contexte.DossierRacine, chemin);
+            var racineNom = Path.GetFileName(Contexte.DossierRacine.TrimEnd(Path.DirectorySeparatorChar));
+            texte.Text = $"{racineNom}  ›  {relatif.Replace(Path.DirectorySeparatorChar.ToString(), "  ›  ")}";
+        }
+        else
+        {
+            texte.Text = chemin.Replace(Path.DirectorySeparatorChar.ToString(), "  ›  ");
+        }
     }
 
     private void MettreAJourEntete(TabItem onglet, EtatOnglet etat)
@@ -860,7 +1115,7 @@ public partial class OngletsControl : UserControl
         pinceau.Freeze();
         etat.BadgeBordure.Background = pinceau;
 
-        var modifie = etat.Editeur.IsModified;
+        var modifie = etat.Editeur is { IsModified: true };
         etat.TitreTextBlock.Text = modifie ? $"{etat.TitreBase} *" : etat.TitreBase;
         etat.PanneauEntete.ToolTip = etat.Chemin ?? "Nouveau fichier non enregistré";
         onglet.ToolTip = null;
@@ -873,9 +1128,9 @@ public partial class OngletsControl : UserControl
         var ext = Path.GetExtension(chemin).ToLowerInvariant();
         return ext switch
         {
-            ".py" => ("PY", "#3572A5"),
+            ".py" or ".pyw" => ("PY", "#3572A5"),
             ".cs" => ("C#", "#68217A"),
-            ".js" or ".mjs" or ".cjs" => ("JS", "#C99A14"),
+            ".js" or ".mjs" or ".cjs" or ".jsx" => ("JS", "#C99A14"),
             ".ts" or ".tsx" => ("TS", "#3178C6"),
             ".java" => ("JV", "#B07219"),
             ".c" or ".h" => ("C", "#555555"),
@@ -889,7 +1144,10 @@ public partial class OngletsControl : UserControl
             ".json" => ("{}", "#2E8B57"),
             ".xml" or ".xaml" or ".csproj" => ("<>", "#D96523"),
             ".html" or ".htm" => ("HTM", "#E34C26"),
-            ".css" => ("CSS", "#563D7C"),
+            ".css" or ".scss" => ("CSS", "#563D7C"),
+            ".sql" => ("SQL", "#00758F"),
+            ".yml" or ".yaml" => ("YML", "#CB171E"),
+            ".png" or ".jpg" or ".jpeg" or ".gif" or ".bmp" or ".ico" or ".svg" => ("IMG", "#008B8B"),
             _ when ext.Length > 1 => (ext[1..].ToUpperInvariant()[..Math.Min(3, ext.Length - 1)], "#6E7681"),
             _ => ("TXT", "#6E7681")
         };
@@ -910,7 +1168,6 @@ public partial class OngletsControl : UserControl
                 return onglet;
             }
         }
-
         return null;
     }
 
@@ -934,14 +1191,8 @@ public partial class OngletsControl : UserControl
 
     private static string? NormaliserChemin(string chemin)
     {
-        try
-        {
-            return Path.GetFullPath(chemin);
-        }
-        catch (Exception)
-        {
-            return null;
-        }
+        try { return Path.GetFullPath(chemin); }
+        catch (Exception) { return null; }
     }
 
     private static bool EstDansBouton(DependencyObject? source)
@@ -964,10 +1215,7 @@ public partial class OngletsControl : UserControl
                 UseShellExecute = true
             });
         }
-        catch (Exception)
-        {
-            // Ignore si le gestionnaire de fichiers ne peut être lancé
-        }
+        catch (Exception) { }
     }
 
     private static void AjouterAuxRecents(string chemin)
@@ -992,31 +1240,6 @@ public partial class OngletsControl : UserControl
         });
     }
 
-    private void AppliquerTheme(string theme)
-    {
-        var sombre = string.Equals(theme, "Sombre", StringComparison.OrdinalIgnoreCase);
-
-        DefinirCouleur("CouleurFondRacine", sombre ? "#1E1E1E" : "#FFFFFF");
-        DefinirCouleur("CouleurFondBarreOnglets", sombre ? "#252526" : "#F3F3F3");
-        DefinirCouleur("CouleurBordureOnglets", sombre ? "#3C3C3C" : "#DDDDDD");
-        DefinirCouleur("CouleurOngletInactif", sombre ? "#2D2D2D" : "#ECECEC");
-        DefinirCouleur("CouleurOngletSurvol", sombre ? "#383838" : "#E2E2E2");
-        DefinirCouleur("CouleurOngletActif", sombre ? "#1E1E1E" : "#FFFFFF");
-        DefinirCouleur("CouleurAccentOnglet", sombre ? "#007FD4" : "#007ACC");
-        DefinirCouleur("CouleurTexteOnglet", sombre ? "#CCCCCC" : "#444444");
-        DefinirCouleur("CouleurTexteActif", sombre ? "#FFFFFF" : "#111111");
-        DefinirCouleur("CouleurTexteSecondaire", sombre ? "#969696" : "#666666");
-        DefinirCouleur("CouleurSurvolBouton", sombre ? "#3C3C3C" : "#D6D6D6");
-    }
-
-    private void DefinirCouleur(string cle, string hex)
-    {
-        var couleur = (Color)ColorConverter.ConvertFromString(hex);
-        var pinceau = new SolidColorBrush(couleur);
-        pinceau.Freeze();
-        Resources[cle] = pinceau;
-    }
-
     // ------------------------------------------------------------------
     // Gestionnaires d'événements UI et clavier
     // ------------------------------------------------------------------
@@ -1024,17 +1247,17 @@ public partial class OngletsControl : UserControl
     private void Onglets_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_reorganisationEnCours) return;
-        // Ignore les événements SelectionChanged remontés depuis un contrôle interne de l'éditeur
         if (!ReferenceEquals(e.OriginalSource, Onglets)) return;
 
         MettreAJourPanneauVide();
         SynchroniserContexte();
+        SauvegarderEtatSession();
 
         if (Onglets.SelectedItem is TabItem onglet)
         {
             onglet.BringIntoView();
             VerifierModificationExterneOngletActif();
-            if (onglet.Tag is EtatOnglet etat)
+            if (onglet.Tag is EtatOnglet etat && etat.Editeur != null)
                 DonnerFocusEditeur(etat.Editeur);
         }
     }
@@ -1052,7 +1275,6 @@ public partial class OngletsControl : UserControl
         var touche = e.Key == Key.System ? e.SystemKey : e.Key;
         var maj = (mod & ModifierKeys.Shift) != 0;
 
-        // Ctrl+Tab / Ctrl+Maj+Tab : onglet suivant / précédent
         if (touche == Key.Tab)
         {
             if (Onglets.Items.Count > 1)
@@ -1066,7 +1288,6 @@ public partial class OngletsControl : UserControl
             return;
         }
 
-        // Ctrl+Maj+T : rouvrir le dernier onglet fermé
         if (touche == Key.T && maj)
         {
             RouvrirDernierOngletFerme();
@@ -1074,17 +1295,12 @@ public partial class OngletsControl : UserControl
             return;
         }
 
-        // Ctrl+1..9 : accès direct à un onglet par son rang (Ctrl+9 = dernier onglet)
         var numero = ObtenirNumeroOnglet(touche);
         if (numero > 0 && !maj && Onglets.Items.Count > 0)
         {
-            var indexCible = numero == 9
-                ? Onglets.Items.Count - 1
-                : numero - 1;
-
+            var indexCible = numero == 9 ? Onglets.Items.Count - 1 : numero - 1;
             if (indexCible < Onglets.Items.Count)
                 Onglets.SelectedIndex = indexCible;
-
             e.Handled = true;
         }
     }
@@ -1104,6 +1320,7 @@ public partial class OngletsControl : UserControl
     };
 
     private void BoutonNouveau_Click(object sender, RoutedEventArgs e) => NouvelOnglet();
+    private void BoutonRouvrir_Click(object sender, RoutedEventArgs e) => RouvrirDernierOngletFerme();
 
     private void BoutonListeOnglets_Click(object sender, RoutedEventArgs e)
     {
@@ -1119,7 +1336,7 @@ public partial class OngletsControl : UserControl
             foreach (var onglet in Onglets.Items.OfType<TabItem>())
             {
                 if (onglet.Tag is not EtatOnglet etat) continue;
-                var nom = etat.Editeur.IsModified ? $"{etat.TitreBase} *" : etat.TitreBase;
+                var nom = etat.Editeur is { IsModified: true } ? $"{etat.TitreBase} *" : etat.TitreBase;
                 var item = new MenuItem
                 {
                     Header = nom.Replace("_", "__"),
@@ -1145,7 +1362,6 @@ public partial class OngletsControl : UserControl
     {
         if (e.ClickCount != 2) return;
 
-        // Ouvre un nouvel onglet uniquement si le double-clic est sur la zone libre de la barre
         if (e.OriginalSource is DependencyObject source)
         {
             var parent = source;

@@ -1,8 +1,8 @@
 namespace KeyCode.Services;
 
 /// <summary>
-/// Événements globaux : c'est le seul moyen de communication entre les contrôles.
-/// Propriétaire : cabrelds. Ne pas renommer, ne pas supprimer.
+/// Événements globaux : moyen de communication découplé entre les contrôles et services.
+/// Tous les contrats historiques sont conservés à l'identique.
 /// </summary>
 public static class AppEvents
 {
@@ -29,4 +29,22 @@ public static class AppEvents
     // Un fichier vient d'être enregistré (paramètre : chemin complet)
     public static event Action<string>? FichierEnregistre;
     public static void SignalerFichierEnregistre(string chemin) => FichierEnregistre?.Invoke(chemin);
+
+    // Un fichier a été renommé dans l'explorateur (ancien chemin, nouveau chemin)
+    public static event Action<string, string>? FichierRenomme;
+    public static void SignalerFichierRenomme(string ancienChemin, string nouveauChemin) =>
+        FichierRenomme?.Invoke(ancienChemin, nouveauChemin);
+
+    // Un fichier a été supprimé dans l'explorateur (chemin)
+    public static event Action<string>? FichierSupprime;
+    public static void SignalerFichierSupprime(string chemin) => FichierSupprime?.Invoke(chemin);
+
+    // Les diagnostics (erreurs/avertissements) ont été mis à jour
+    public static event Action? DiagnosticsChanges;
+    public static void SignalerDiagnosticsChanges() => DiagnosticsChanges?.Invoke();
+
+    // Demande d'assistance Gemini sur un message d'erreur / diagnostic
+    public static event Action<string, string?, int?>? AideIADemandee;
+    public static void DemanderAideIA(string messageErreur, string? chemin = null, int? ligne = null) =>
+        AideIADemandee?.Invoke(messageErreur, chemin, ligne);
 }
