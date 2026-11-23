@@ -1,0 +1,137 @@
+<UserControl x:Class="KeyCode.Controls.AssistantIAControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="{DynamicResource ThemeFondSecondaire}"
+             Loaded="AssistantIAControl_Loaded"
+             Unloaded="AssistantIAControl_Unloaded">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- En-tête -->
+        <Border Grid.Row="0" Padding="10,6"
+                BorderBrush="{DynamicResource ThemeBordure}" BorderThickness="0,0,0,1">
+            <DockPanel LastChildFill="False">
+                <TextBlock Text="✦ GEMINI AI" DockPanel.Dock="Left"
+                           Foreground="{DynamicResource ThemeAccent}"
+                           FontSize="11" FontWeight="Bold" VerticalAlignment="Center"/>
+                <Button Content="✕" ToolTip="Fermer l'assistant" DockPanel.Dock="Right"
+                        Background="Transparent" Foreground="{DynamicResource ThemeTexte}"
+                        BorderThickness="0" Padding="6,2" Cursor="Hand" Focusable="False"
+                        Click="Fermer_Click"/>
+                <Button Content="Effacer" ToolTip="Nouvelle conversation" DockPanel.Dock="Right"
+                        Background="Transparent" Foreground="{DynamicResource ThemeTexteSecondaire}"
+                        BorderThickness="0" Padding="6,2" FontSize="11" Cursor="Hand" Focusable="False"
+                        Click="Effacer_Click"/>
+                <Button Content="⚙ Clé API" ToolTip="Configurer la clé API Gemini" DockPanel.Dock="Right"
+                        Background="Transparent" Foreground="{DynamicResource ThemeTexte}"
+                        BorderThickness="0" Padding="6,2" FontSize="11" Cursor="Hand" Focusable="False"
+                        Click="BasculerConfig_Click"/>
+            </DockPanel>
+        </Border>
+
+        <!-- Configuration rapide clé API & modèle -->
+        <Border x:Name="PanneauConfig" Grid.Row="1" Visibility="Collapsed"
+                Background="{DynamicResource ThemeFondTertiaire}"
+                BorderBrush="{DynamicResource ThemeBordure}" BorderThickness="0,0,0,1"
+                Padding="10,8">
+            <StackPanel>
+                <TextBlock Text="Clé API Google Gemini (aistudio.google.com/apikey) :"
+                           Foreground="{DynamicResource ThemeTexte}" FontSize="11" Margin="0,0,0,4"/>
+                <TextBox x:Name="ChampCleApi" Style="{StaticResource ChampVsCode}" FontSize="11" Margin="0,0,0,6"/>
+                <Grid Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Modèle :" Foreground="{DynamicResource ThemeTexte}"
+                               FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <ComboBox x:Name="ComboModele" Grid.Column="1" FontSize="11">
+                        <ComboBoxItem Content="gemini-3.8-flash"/>
+                        <ComboBoxItem Content="gemini-flash-latest"/>
+                        <ComboBoxItem Content="gemini-3.7-flash"/>
+                        <ComboBoxItem Content="gemini-3.8-pro"/>
+                    </ComboBox>
+                    <Button x:Name="BoutonRafraichirModeles" Grid.Column="2" Content="↻"
+                            Margin="4,0,0,0" Padding="7,2" FontSize="12"
+                            ToolTip="Charger les modèles disponibles pour cette clé API"
+                            Style="{StaticResource BoutonSecondaireVsCode}"
+                            Click="RafraichirModeles_Click"/>
+                </Grid>
+                <Button Content="Enregistrer la configuration"
+                        Style="{StaticResource BoutonPrimaireVsCode}"
+                        FontSize="11" Click="SauvegarderConfig_Click"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Options de contexte et actions rapides -->
+        <Border Grid.Row="2" Padding="8,6"
+                BorderBrush="{DynamicResource ThemeBordure}" BorderThickness="0,0,0,1">
+            <StackPanel>
+                <WrapPanel Margin="0,0,0,6">
+                    <CheckBox x:Name="ChkFichier" Content="Fichier actif" IsChecked="True"
+                              Foreground="{DynamicResource ThemeTexte}" FontSize="11" Margin="0,0,10,0"/>
+                    <CheckBox x:Name="ChkSelection" Content="Sélection" IsChecked="True"
+                              Foreground="{DynamicResource ThemeTexte}" FontSize="11" Margin="0,0,10,0"/>
+                    <CheckBox x:Name="ChkErreurs" Content="Erreurs" IsChecked="True"
+                              Foreground="{DynamicResource ThemeTexte}" FontSize="11"/>
+                </WrapPanel>
+                <WrapPanel>
+                    <Button Content="Expliquer" Margin="0,0,4,4" Padding="7,3" FontSize="11"
+                            Style="{StaticResource BoutonSecondaireVsCode}" Click="ActionExpliquer_Click"/>
+                    <Button Content="Corriger erreurs" Margin="0,0,4,4" Padding="7,3" FontSize="11"
+                            Style="{StaticResource BoutonSecondaireVsCode}" Click="ActionCorriger_Click"/>
+                    <Button Content="Optimiser" Margin="0,0,4,4" Padding="7,3" FontSize="11"
+                            Style="{StaticResource BoutonSecondaireVsCode}" Click="ActionOptimiser_Click"/>
+                    <Button Content="Commenter" Margin="0,0,4,4" Padding="7,3" FontSize="11"
+                            Style="{StaticResource BoutonSecondaireVsCode}" Click="ActionCommenter_Click"/>
+                </WrapPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- Historique des messages -->
+        <ScrollViewer x:Name="DefileurChat" Grid.Row="3" VerticalScrollBarVisibility="Auto" Padding="8">
+            <StackPanel x:Name="ListeMessages">
+                <Border x:Name="CarteBienvenue" Background="{DynamicResource ThemeFondTertiaire}"
+                        BorderBrush="{DynamicResource ThemeBordure}" BorderThickness="1"
+                        CornerRadius="6" Padding="10" Margin="0,0,0,8">
+                    <TextBlock TextWrapping="Wrap" FontSize="12"
+                               Foreground="{DynamicResource ThemeTexte}"
+                               Text="Bonjour ! Je suis ton assistant Gemini intégré à KeyCode. Pose-moi une question, sélectionne du code ou clique sur « Corriger erreurs » pour analyser et insérer du code en un clic."/>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Zone de saisie -->
+        <Border Grid.Row="4" Padding="8"
+                BorderBrush="{DynamicResource ThemeBordure}" BorderThickness="0,1,0,0">
+            <StackPanel>
+                <TextBlock x:Name="TexteStatut" Text="Prêt"
+                           Foreground="{DynamicResource ThemeTexteSecondaire}"
+                           FontSize="10" Margin="0,0,0,4"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="ChampPrompt" Grid.Column="0"
+                             Style="{StaticResource ChampVsCode}"
+                             AcceptsReturn="True" TextWrapping="Wrap"
+                             MaxHeight="95" MinHeight="42"
+                             VerticalScrollBarVisibility="Auto"
+                             PreviewKeyDown="ChampPrompt_PreviewKeyDown"/>
+                    <Button x:Name="BoutonEnvoyer" Grid.Column="1" Content="Envoyer"
+                            Margin="6,0,0,0" VerticalAlignment="Bottom"
+                            Style="{StaticResource BoutonPrimaireVsCode}"
+                            Click="Envoyer_Click"/>
+                </Grid>
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

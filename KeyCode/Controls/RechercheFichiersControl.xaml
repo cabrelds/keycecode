@@ -1,25 +1,42 @@
 <UserControl x:Class="KeyCode.Controls.RechercheFichiersControl"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Grid Margin="4">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="{DynamicResource ThemeFondSecondaire}">
+    <Grid>
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <Grid Grid.Row="0" Margin="0,0,0,4">
+        <Border Grid.Row="0" Padding="10,6"
+                BorderBrush="{DynamicResource ThemeBordure}" BorderThickness="0,1,0,1">
+            <DockPanel LastChildFill="False">
+                <TextBlock Text="RECHERCHE GLOBALE" DockPanel.Dock="Left"
+                           Foreground="{DynamicResource ThemeTexteSecondaire}"
+                           FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                <Button Content="✕" ToolTip="Masquer (Échap)" DockPanel.Dock="Right"
+                        Background="Transparent" Foreground="{DynamicResource ThemeTexte}"
+                        BorderThickness="0" Padding="6,2" Cursor="Hand" Focusable="False"
+                        Click="Fermer_Click"/>
+            </DockPanel>
+        </Border>
+
+        <Grid Grid.Row="1" Margin="8,6">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
             <TextBox x:Name="ChampRecherche" Grid.Column="0" Margin="0,0,4,0"
+                     Style="{StaticResource ChampVsCode}"
                      KeyDown="ChampRecherche_KeyDown"/>
-            <Button x:Name="BoutonRechercher" Grid.Column="1" Content="Rechercher"
-                    Padding="8,2" Click="BoutonRechercher_Click"/>
+            <Button x:Name="BoutonRechercher" Grid.Column="1" Content="Chercher"
+                    Style="{StaticResource BoutonPrimaireVsCode}"
+                    Padding="10,4" Click="BoutonRechercher_Click"/>
         </Grid>
 
-        <ListBox x:Name="ListeResultats" Grid.Row="1"
-                 FontFamily="Consolas"
+        <ListBox x:Name="ListeResultats" Grid.Row="2"
+                 FontFamily="Consolas" FontSize="12"
                  MouseDoubleClick="Resultat_DoubleClic"/>
     </Grid>
 </UserControl>
