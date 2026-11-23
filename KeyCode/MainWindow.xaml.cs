@@ -1,51 +1,154 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using ICSharpCode.AvalonEdit;
-using Microsoft.Win32;
+using KeyCode.Controls;
 using KeyCode.Services;
+using Microsoft.Win32;
 
 namespace KeyCode;
 
 /// <summary>
-/// Fenêtre principale : assemble l'explorateur, les onglets, les recherches et le terminal.
-/// Propriétaire : cabrelds.
+/// Fenêtre principale VS Code de KeyCode : assemble barre d'activité, explorateur, recherche globale,
+/// onglets d'éditeurs, diagnostics/terminal, assistant IA Gemini et palette de commandes.
 /// </summary>
 public partial class MainWindow : Window
 {
     private TextEditor? _editeurSuivi;
     private double _largeurGauche = 260;
+    private double _largeurIA = 340;
+    private double _hauteurBas = 210;
 
     public MainWindow()
     {
-        InitializeComponent();
-
         SettingsService.Charger();
         ThemeManager.Appliquer(SettingsService.Theme);
 
-        // OngletsControl écoute lui-même AppEvents.FichierDemande et rouvre la session au chargement.
-        // La fenêtre ne gère que l'ouverture à une ligne précise (venant de la recherche dans les fichiers).
-        AppEvents.FichierDemandeALaLigne += (chemin, ligne) => Onglets.OuvrirFichierALaLigne(chemin, ligne);
+        _largeurGauche = SettingsService.LargeurPanneauGauche;
+        _largeurIA = SettingsService.LargeurPanneauIA;
+        _hauteurBas = SettingsService.HauteurPanneauBas;
 
-        // Mise à jour du menu des fichiers récents
+        InitializeComponent();
+
+        ColonneGauche.Width = new GridLength(_largeurGauche);
+        LigneBas.Height = new GridLength(_hauteurBas);
+        if (SettingsService.PanneauIAVisible)
+            AfficherPanneauIA(true);
+
+        AppEvents.FichierDemandeALaLigne += (chemin, ligne) => Onglets.OuvrirFichierALaLigne(chemin, ligne);
         AppEvents.FichierDemande += AjouterRecent;
         AppEvents.FichierEnregistre += AjouterRecent;
-
-        // Barre de statut et titre
         AppEvents.EditeurActifChange += SuivreEditeur;
-        AppEvents.DossierOuvert += _ => MettreAJourTitre();
+        AppEvents.DossierOuvert += _ => MettreAJourTitreEtDossier();
+        AppEvents.DiagnosticsChanges += () => Dispatcher.InvokeAsync(MettreAJourCompteurDiagnostics);
+        AppEvents.ThemeChange += _ => Dispatcher.InvokeAsync(MettreAJourBoutonTheme);
+        AppEvents.AideIADemandee += (_, _, _) => Dispatcher.InvokeAsync(() => AfficherPanneauIA(true));
 
-        // Réouvre le dernier dossier s'il existe encore
+        Terminal.DemandeMasquage += () => BasculerTerminal();
+        AssistantIA.DemandeMasquage += () => AfficherPanneauIA(false);
+
+        InitialiserPaletteCommandes();
+
         if (!string.IsNullOrEmpty(SettingsService.DernierDossier)
-            && System.IO.Directory.Exists(SettingsService.DernierDossier))
+            && Directory.Exists(SettingsService.DernierDossier))
         {
             Explorateur.OuvrirDossier(SettingsService.DernierDossier);
         }
 
+        Loaded += (_, _) => TraiterArgumentsDemarrage();
+
         SuivreEditeur();
         ConstruireMenuRecents();
-        MettreAJourTitre();
+        MettreAJourTitreEtDossier();
+        MettreAJourCompteurDiagnostics();
+        MettreAJourBoutonTheme();
+        MettreAJourZoomStatut();
     }
+
+    private void TraiterArgumentsDemarrage()
+    {
+        var args = Environment.GetCommandLineArgs().Skip(1).ToArray();
+        foreach (var arg in args)
+        {
+            if (string.IsNullOrWhiteSpace(arg) || arg.StartsWith("--", StringComparison.Ordinal))
+                continue;
+
+            try
+            {
+                var complet = Path.GetFullPath(arg);
+                if (Directory.Exists(complet))
+                {
+                    SettingsService.DernierDossier = complet;
+                    Explorateur.OuvrirDossier(complet);
+                }
+                else if (File.Exists(complet))
+                {
+                    AppEvents.DemanderFichier(complet);
+                }
+            }
+            catch (Exception)
+            {
+                // Ignore un argument de chemin invalide
+            }
+        }
+    }
+
+    private void InitialiserPaletteCommandes()
+    {
+        Palette.DefinirCommandes(
+        [
+            new("Fichier : Nouveau fichier", "Ctrl+N", () => Onglets.NouvelOnglet()),
+            new("Fichier : Ouvrir un fichier...", "Ctrl+O", () => Ouvrir_Click(this, new RoutedEventArgs())),
+            new("Fichier : Ouvrir un dossier...", "", () => OuvrirDossier_Click(this, new RoutedEventArgs())),
+            new("Fichier : Enregistrer", "Ctrl+S", () => Onglets.EnregistrerActif()),
+            new("Fichier : Tout enregistrer", "Ctrl+Maj+S", () => Onglets.EnregistrerTout()),
+            new("Fichier : Fermer l'onglet", "Ctrl+W", () => Onglets.FermerOngletActif()),
+            new("Fichier : Rouvrir l'onglet fermé", "Ctrl+Maj+T", () => Onglets.RouvrirDernierOngletFerme()),
+            new("Affichage : Thème Sombre+ (VS Code)", "", () => ChangerTheme("Sombre")),
+            new("Affichage : Thème Clair+ (VS Code)", "", () => ChangerTheme("Clair")),
+            new("Affichage : Afficher / Masquer l'explorateur", "Ctrl+Maj+E", BasculerExplorateur),
+            new("Affichage : Afficher / Masquer le terminal", "Ctrl+J", BasculerTerminal),
+            new("Affichage : Afficher / Masquer Gemini AI", "Ctrl+Alt+I", () => AfficherPanneauIA(AssistantIA.Visibility != Visibility.Visible)),
+            new("Affichage : Zoom +", "", () => ChangerTaille(SettingsService.TaillePolice + 2)),
+            new("Affichage : Zoom -", "", () => ChangerTaille(SettingsService.TaillePolice - 2)),
+            new("Affichage : Réinitialiser le zoom", "", () => ChangerTaille(14)),
+            new("Édition : Rechercher dans le fichier", "Ctrl+F", () => Recherche.Afficher(false)),
+            new("Édition : Remplacer dans le fichier", "Ctrl+H", () => Recherche.Afficher(true)),
+            new("Édition : Aller à la ligne...", "Ctrl+G", () => { if (Contexte.EditeurActif != null) Recherche.AfficherAllerALigne(); }),
+            new("Édition : Rechercher dans les fichiers", "Ctrl+Maj+F", AfficherRechercheFichiers),
+            new("Exécuter : Lancer le fichier actif", "F5", ExecuterFichier),
+            new("Exécuter : Arrêter l'exécution", "", () => Terminal.Arreter()),
+            new("Terminal : Ouvrir PowerShell interactif", "", OuvrirShell),
+            new("Problèmes : Afficher la liste des erreurs", "", OuvrirProblemes),
+            new("Gemini AI : Expliquer le fichier actif", "", () => ExpliquerIA_Click(this, new RoutedEventArgs())),
+            new("Gemini AI : Corriger les erreurs", "", () => CorrigerIA_Click(this, new RoutedEventArgs())),
+            new("Préférences : Paramètres et Clé API Gemini...", "", () => Parametres_Click(this, new RoutedEventArgs())),
+        ]);
+    }
+
+    // ------------------------------------------------------------------
+    // Fenêtre personnalisée (WindowChrome)
+    // ------------------------------------------------------------------
+
+    private void Fenetre_StateChanged(object? sender, EventArgs e)
+    {
+        if (WindowState == WindowState.Maximized)
+        {
+            BordureRacine.Padding = new Thickness(7);
+            BoutonAgrandir.Content = "❐";
+        }
+        else
+        {
+            BordureRacine.Padding = new Thickness(0);
+            BoutonAgrandir.Content = "☐";
+        }
+    }
+
+    private void ReduireFenetre_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+
+    private void AgrandirFenetre_Click(object sender, RoutedEventArgs e) =>
+        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
 
     // ------------------------------------------------------------------
     // Fichier
@@ -64,21 +167,18 @@ public partial class MainWindow : Window
         var dlg = new OpenFolderDialog();
         if (dlg.ShowDialog() != true) return;
         SettingsService.DernierDossier = dlg.FolderName;
-        // OuvrirDossier met à jour Contexte.DossierRacine et signale DossierOuvert
         Explorateur.OuvrirDossier(dlg.FolderName);
     }
 
     private void Enregistrer_Click(object sender, RoutedEventArgs e) => Onglets.EnregistrerActif();
     private void ToutEnregistrer_Click(object sender, RoutedEventArgs e) => Onglets.EnregistrerTout();
     private void FermerOnglet_Click(object sender, RoutedEventArgs e) => Onglets.FermerOngletActif();
+    private void RouvrirOnglet_Click(object sender, RoutedEventArgs e) => Onglets.RouvrirDernierOngletFerme();
     private void Quitter_Click(object sender, RoutedEventArgs e) => Close();
-
-    // ------------------------------------------------------------------
-    // Fichiers récents (SettingsService.DerniersFichiers)
-    // ------------------------------------------------------------------
 
     private void AjouterRecent(string chemin)
     {
+        SettingsService.DerniersFichiers ??= new List<string>();
         var liste = SettingsService.DerniersFichiers;
         liste.RemoveAll(c => string.Equals(c, chemin, StringComparison.OrdinalIgnoreCase));
         liste.Insert(0, chemin);
@@ -89,7 +189,7 @@ public partial class MainWindow : Window
     private void ConstruireMenuRecents()
     {
         MenuRecents.Items.Clear();
-        var liste = SettingsService.DerniersFichiers;
+        var liste = SettingsService.DerniersFichiers ?? new List<string>();
         if (liste.Count == 0)
         {
             MenuRecents.Items.Add(new MenuItem { Header = "(aucun)", IsEnabled = false });
@@ -104,7 +204,7 @@ public partial class MainWindow : Window
     }
 
     // ------------------------------------------------------------------
-    // Édition
+    // Édition & Palette
     // ------------------------------------------------------------------
 
     private void Annuler_Click(object sender, RoutedEventArgs e) => Contexte.EditeurActif?.Undo();
@@ -114,30 +214,74 @@ public partial class MainWindow : Window
     private void Coller_Click(object sender, RoutedEventArgs e) => Contexte.EditeurActif?.Paste();
     private void ToutSelectionner_Click(object sender, RoutedEventArgs e) => Contexte.EditeurActif?.SelectAll();
 
-    // Ctrl+F, Ctrl+H et Ctrl+G sont captés directement par RechercheControl
     private void Rechercher_Click(object sender, RoutedEventArgs e) => Recherche.Afficher(false);
     private void Remplacer_Click(object sender, RoutedEventArgs e) => Recherche.Afficher(true);
+
+    private void AllerALigne_Click(object sender, RoutedEventArgs e)
+    {
+        if (Contexte.EditeurActif == null) return;
+        Recherche.AfficherAllerALigne();
+    }
+
     private void RechercheFichiers_Click(object sender, RoutedEventArgs e) => AfficherRechercheFichiers();
+    private void PaletteCommandes_Click(object sender, RoutedEventArgs e) => Palette.Ouvrir(modeCommandes: true);
+    private void PaletteFichiers_Click(object sender, RoutedEventArgs e) => Palette.Ouvrir(modeCommandes: false);
 
     private void AfficherRechercheFichiers()
     {
-        // Si l'explorateur est masqué, on le réaffiche pour voir la recherche
         if (PanneauGauche.Visibility != Visibility.Visible) BasculerExplorateur();
         RechercheFichiers.Afficher();
+        ActExplorateur.Tag = null;
+        ActRecherche.Tag = "Actif";
     }
 
     // ------------------------------------------------------------------
-    // Affichage
+    // Affichage, barre d'activité, Gemini AI et Paramètres
     // ------------------------------------------------------------------
+
+    private void ActiviteExplorateur_Click(object sender, RoutedEventArgs e)
+    {
+        if (PanneauGauche.Visibility == Visibility.Visible && RechercheFichiers.Visibility != Visibility.Visible)
+        {
+            BasculerExplorateur();
+        }
+        else
+        {
+            if (PanneauGauche.Visibility != Visibility.Visible) BasculerExplorateur();
+            RechercheFichiers.Masquer();
+            ActExplorateur.Tag = "Actif";
+            ActRecherche.Tag = null;
+        }
+    }
+
+    private void ActiviteRecherche_Click(object sender, RoutedEventArgs e)
+    {
+        if (PanneauGauche.Visibility == Visibility.Visible && RechercheFichiers.Visibility == Visibility.Visible)
+        {
+            RechercheFichiers.Masquer();
+            ActExplorateur.Tag = "Actif";
+            ActRecherche.Tag = null;
+        }
+        else
+        {
+            AfficherRechercheFichiers();
+        }
+    }
 
     private void ThemeClair_Click(object sender, RoutedEventArgs e) => ChangerTheme("Clair");
     private void ThemeSombre_Click(object sender, RoutedEventArgs e) => ChangerTheme("Sombre");
+    private void BasculerTheme_Click(object sender, RoutedEventArgs e) =>
+        ChangerTheme(ThemeManager.ThemeActuel == "Sombre" ? "Clair" : "Sombre");
 
     private void ChangerTheme(string theme)
     {
         ThemeManager.Appliquer(theme);
         SettingsService.Theme = theme;
+        MettreAJourBoutonTheme();
     }
+
+    private void MettreAJourBoutonTheme() =>
+        BoutonStatutTheme.Content = ThemeManager.ThemeActuel == "Sombre" ? "🌙 Sombre" : "☀ Clair";
 
     private void ZoomPlus_Click(object sender, RoutedEventArgs e) => ChangerTaille(SettingsService.TaillePolice + 2);
     private void ZoomMoins_Click(object sender, RoutedEventArgs e) => ChangerTaille(SettingsService.TaillePolice - 2);
@@ -147,9 +291,15 @@ public partial class MainWindow : Window
     {
         taille = Math.Clamp(taille, 8, 48);
         SettingsService.TaillePolice = taille;
-        // L'onglet actif change tout de suite ; ReconfigurerTous (nyangono) met à jour les autres onglets
         if (Contexte.EditeurActif != null) Contexte.EditeurActif.FontSize = taille;
         EditeurService.ReconfigurerTous();
+        MettreAJourZoomStatut();
+    }
+
+    private void MettreAJourZoomStatut()
+    {
+        var pct = (int)Math.Round(SettingsService.TaillePolice / 14.0 * 100);
+        BoutonStatutZoom.Content = $"{pct}%";
     }
 
     private void BasculerExplorateur_Click(object sender, RoutedEventArgs e) => BasculerExplorateur();
@@ -158,46 +308,182 @@ public partial class MainWindow : Window
     {
         if (PanneauGauche.Visibility == Visibility.Visible)
         {
-            _largeurGauche = ColonneGauche.ActualWidth;
+            if (ColonneGauche.ActualWidth > 40) _largeurGauche = ColonneGauche.ActualWidth;
             PanneauGauche.Visibility = Visibility.Collapsed;
             SeparateurGauche.Visibility = Visibility.Collapsed;
             ColonneGauche.Width = new GridLength(0);
-            ColonneSeparateur.Width = new GridLength(0);
+            ColonneSeparateurGauche.Width = new GridLength(0);
+            ActExplorateur.Tag = null;
+            ActRecherche.Tag = null;
         }
         else
         {
             PanneauGauche.Visibility = Visibility.Visible;
             SeparateurGauche.Visibility = Visibility.Visible;
             ColonneGauche.Width = new GridLength(_largeurGauche);
-            ColonneSeparateur.Width = new GridLength(5);
+            ColonneSeparateurGauche.Width = new GridLength(4);
+            ActExplorateur.Tag = RechercheFichiers.Visibility == Visibility.Visible ? null : "Actif";
+            ActRecherche.Tag = RechercheFichiers.Visibility == Visibility.Visible ? "Actif" : null;
         }
     }
 
-    private void BasculerTerminal_Click(object sender, RoutedEventArgs e)
+    private void BasculerTerminal_Click(object sender, RoutedEventArgs e) => BasculerTerminal();
+
+    private void BasculerTerminal()
     {
-        Terminal.Visibility = Terminal.Visibility == Visibility.Visible
-            ? Visibility.Collapsed
-            : Visibility.Visible;
+        if (Terminal.Visibility == Visibility.Visible)
+        {
+            if (LigneBas.ActualHeight > 40) _hauteurBas = LigneBas.ActualHeight;
+            Terminal.Visibility = Visibility.Collapsed;
+            SeparateurBas.Visibility = Visibility.Collapsed;
+            LigneBas.Height = new GridLength(0);
+            LigneSeparateurBas.Height = new GridLength(0);
+            ActProblemes.Tag = null;
+        }
+        else
+        {
+            Terminal.Visibility = Visibility.Visible;
+            SeparateurBas.Visibility = Visibility.Visible;
+            LigneBas.Height = new GridLength(_hauteurBas);
+            LigneSeparateurBas.Height = new GridLength(4);
+            ActProblemes.Tag = "Actif";
+        }
+    }
+
+    private void BasculerIA_Click(object sender, RoutedEventArgs e) =>
+        AfficherPanneauIA(AssistantIA.Visibility != Visibility.Visible);
+
+    private void AfficherPanneauIA(bool afficher)
+    {
+        if (afficher)
+        {
+            AssistantIA.Visibility = Visibility.Visible;
+            SeparateurIA.Visibility = Visibility.Visible;
+            ColonneIA.Width = new GridLength(_largeurIA);
+            ColonneSeparateurIA.Width = new GridLength(4);
+            ActGemini.Tag = "Actif";
+            SettingsService.PanneauIAVisible = true;
+            Dispatcher.BeginInvoke(() => AssistantIA.FocaliserPrompt());
+        }
+        else
+        {
+            if (ColonneIA.ActualWidth > 100) _largeurIA = ColonneIA.ActualWidth;
+            AssistantIA.Visibility = Visibility.Collapsed;
+            SeparateurIA.Visibility = Visibility.Collapsed;
+            ColonneIA.Width = new GridLength(0);
+            ColonneSeparateurIA.Width = new GridLength(0);
+            ActGemini.Tag = null;
+            SettingsService.PanneauIAVisible = false;
+        }
+    }
+
+    private void ExpliquerIA_Click(object sender, RoutedEventArgs e)
+    {
+        AfficherPanneauIA(true);
+        AppEvents.DemanderAideIA("Explique clairement ce fichier et son rôle.", Contexte.CheminActif, null);
+    }
+
+    private void CorrigerIA_Click(object sender, RoutedEventArgs e)
+    {
+        AfficherPanneauIA(true);
+        AppEvents.DemanderAideIA("Analyse les erreurs et propose une correction complète.", Contexte.CheminActif, null);
+    }
+
+    private void Parametres_Click(object sender, RoutedEventArgs e) => OuvrirFenetreParametres();
+
+    private void OuvrirFenetreParametres()
+    {
+        var panel = new StackPanel { Margin = new Thickness(18) };
+
+        panel.Children.Add(new TextBlock { Text = "Thème de l'interface :", FontWeight = FontWeights.SemiBold, Foreground = ThemeManager.Pinceau("ThemeTexte"), Margin = new Thickness(0, 0, 0, 4) });
+        var comboTheme = new ComboBox { Margin = new Thickness(0, 0, 0, 12) };
+        comboTheme.Items.Add("Sombre");
+        comboTheme.Items.Add("Clair");
+        comboTheme.SelectedItem = ThemeManager.ThemeActuel;
+        panel.Children.Add(comboTheme);
+
+        panel.Children.Add(new TextBlock { Text = "Taille de la police (8 à 48) :", FontWeight = FontWeights.SemiBold, Foreground = ThemeManager.Pinceau("ThemeTexte"), Margin = new Thickness(0, 0, 0, 4) });
+        var champPolice = new TextBox { Text = SettingsService.TaillePolice.ToString("0"), Style = (Style)Application.Current.FindResource("ChampVsCode"), Margin = new Thickness(0, 0, 0, 12) };
+        panel.Children.Add(champPolice);
+
+        panel.Children.Add(new TextBlock { Text = "Clé API Google Gemini :", FontWeight = FontWeights.SemiBold, Foreground = ThemeManager.Pinceau("ThemeTexte"), Margin = new Thickness(0, 0, 0, 4) });
+        var champCle = new TextBox { Text = SettingsService.CleApiGemini, Style = (Style)Application.Current.FindResource("ChampVsCode"), Margin = new Thickness(0, 0, 0, 12) };
+        panel.Children.Add(champCle);
+
+        panel.Children.Add(new TextBlock { Text = "Modèle Gemini :", FontWeight = FontWeights.SemiBold, Foreground = ThemeManager.Pinceau("ThemeTexte"), Margin = new Thickness(0, 0, 0, 4) });
+        var comboModele = new ComboBox { Margin = new Thickness(0, 0, 0, 16) };
+        comboModele.Items.Add("gemini-2.5-flash");
+        comboModele.Items.Add("gemini-2.5-pro");
+        comboModele.Items.Add("gemini-2.0-flash");
+        comboModele.SelectedItem = SettingsService.ModeleGemini;
+        if (comboModele.SelectedIndex < 0) comboModele.SelectedIndex = 0;
+        panel.Children.Add(comboModele);
+
+        var boutons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        var btnOk = new Button { Content = "Enregistrer", IsDefault = true, Margin = new Thickness(0, 0, 8, 0), Style = (Style)Application.Current.FindResource("BoutonPrimaireVsCode") };
+        var btnAnnuler = new Button { Content = "Annuler", IsCancel = true, Style = (Style)Application.Current.FindResource("BoutonSecondaireVsCode") };
+        boutons.Children.Add(btnOk);
+        boutons.Children.Add(btnAnnuler);
+        panel.Children.Add(boutons);
+
+        var fen = new Window
+        {
+            Title = "Paramètres - KeyCode",
+            Content = panel,
+            Width = 420,
+            SizeToContent = SizeToContent.Height,
+            ResizeMode = ResizeMode.NoResize,
+            Background = ThemeManager.Pinceau("ThemeFondSecondaire"),
+            Foreground = ThemeManager.Pinceau("ThemeTexte"),
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Owner = this
+        };
+
+        btnOk.Click += (_, _) =>
+        {
+            if (comboTheme.SelectedItem is string th) ChangerTheme(th);
+            if (double.TryParse(champPolice.Text, out var taille)) ChangerTaille(taille);
+            SettingsService.CleApiGemini = champCle.Text.Trim();
+            if (comboModele.SelectedItem is string mod) SettingsService.ModeleGemini = mod;
+            SettingsService.Enregistrer();
+            fen.DialogResult = true;
+        };
+
+        fen.ShowDialog();
     }
 
     // ------------------------------------------------------------------
-    // Exécuter
+    // Exécuter / Terminal / Problèmes
     // ------------------------------------------------------------------
 
     private void Executer_Click(object sender, RoutedEventArgs e) => ExecuterFichier();
 
     private void ExecuterFichier()
     {
-        // Enregistrer d'abord ; EnregistrerActif retourne false si aucun onglet ou si l'utilisateur annule
         if (!Onglets.EnregistrerActif()) return;
         if (Contexte.CheminActif == null) return;
 
-        if (Terminal.Visibility != Visibility.Visible) Terminal.Visibility = Visibility.Visible;
+        if (Terminal.Visibility != Visibility.Visible) BasculerTerminal();
         Terminal.Executer(Contexte.CheminActif);
     }
 
     private void Arreter_Click(object sender, RoutedEventArgs e) => Terminal.Arreter();
     private void EffacerTerminal_Click(object sender, RoutedEventArgs e) => Terminal.Effacer();
+
+    private void OuvrirProblemes_Click(object sender, RoutedEventArgs e) => OuvrirProblemes();
+    private void OuvrirShell_Click(object sender, RoutedEventArgs e) => OuvrirShell();
+
+    private void OuvrirProblemes()
+    {
+        if (Terminal.Visibility != Visibility.Visible) BasculerTerminal();
+        Terminal.AfficherProblemes();
+    }
+
+    private void OuvrirShell()
+    {
+        if (Terminal.Visibility != Visibility.Visible) BasculerTerminal();
+        Terminal.AfficherShell();
+    }
 
     // ------------------------------------------------------------------
     // Aide
@@ -206,21 +492,31 @@ public partial class MainWindow : Window
     private void Raccourcis_Click(object sender, RoutedEventArgs e)
     {
         MessageBox.Show(
-            "Ctrl+N : nouvel onglet\nCtrl+O : ouvrir\nCtrl+S : enregistrer\nCtrl+W : fermer l'onglet\n" +
-            "Ctrl+Tab : onglet suivant\nCtrl+F : rechercher\nCtrl+H : remplacer\nCtrl+G : aller à la ligne\n" +
-            "Ctrl+Maj+F : rechercher dans les fichiers\nF5 : exécuter",
-            "Raccourcis clavier");
+            "Ctrl+N : nouvel onglet\n" +
+            "Ctrl+O : ouvrir un fichier\n" +
+            "Ctrl+S / Ctrl+Maj+S : enregistrer / tout enregistrer\n" +
+            "Ctrl+W / Ctrl+Maj+T : fermer / rouvrir l'onglet\n" +
+            "Ctrl+Tab / Ctrl+1..9 : naviguer entre les onglets\n" +
+            "Ctrl+P / Ctrl+Maj+P : accès rapide / palette de commandes\n" +
+            "Ctrl+F / Ctrl+H / Ctrl+G : rechercher / remplacer / aller à la ligne\n" +
+            "Ctrl+Maj+F : rechercher dans tout le projet\n" +
+            "Ctrl+/ : commenter / décommenter   |   Alt+↑/↓ : déplacer ligne\n" +
+            "Ctrl+Espace : auto-complétion   |   Ctrl+Molette : zoom\n" +
+            "Ctrl+Maj+E : explorateur   |   Ctrl+J : panneau bas   |   Ctrl+Alt+I : Gemini AI\n" +
+            "F5 : exécuter le fichier actif",
+            "Raccourcis clavier - KeyCode");
     }
 
     private void APropos_Click(object sender, RoutedEventArgs e)
     {
-        MessageBox.Show("KeyCode\nÉditeur de code en C# (WPF, .NET 10, AvalonEdit).\n" +
-                        "Projet de groupe : cabrelds, erwan-rk, DeboraQueen237, morelbrad27-lab, nyangono.",
+        MessageBox.Show(
+            "KeyCode IDE v2.0\nÉditeur de code en C# (WPF, .NET 10, AvalonEdit) avec assistant IA Gemini.\n\n" +
+            "Équipe : cabrelds, erwan-rk, DeboraQueen237, morelbrad27-lab, nyangono.",
             "À propos de KeyCode");
     }
 
     // ------------------------------------------------------------------
-    // Raccourcis, glisser-déposer, fermeture
+    // Raccourcis globaux, glisser-déposer et fermeture
     // ------------------------------------------------------------------
 
     private void Fenetre_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -231,18 +527,32 @@ public partial class MainWindow : Window
             e.Handled = true;
             return;
         }
+        if (e.Key == Key.F1)
+        {
+            Palette.Ouvrir(modeCommandes: true);
+            e.Handled = true;
+            return;
+        }
 
-        if ((Keyboard.Modifiers & ModifierKeys.Control) == 0) return;
-        var maj = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
+        var mod = Keyboard.Modifiers;
+        if ((mod & ModifierKeys.Control) == 0) return;
+
+        var maj = (mod & ModifierKeys.Shift) != 0;
+        var alt = (mod & ModifierKeys.Alt) != 0;
 
         switch (e.Key)
         {
-            case Key.N when !maj: Onglets.NouvelOnglet(); e.Handled = true; break;
-            case Key.O when !maj: Ouvrir_Click(this, new RoutedEventArgs()); e.Handled = true; break;
-            case Key.S when !maj: Onglets.EnregistrerActif(); e.Handled = true; break;
-            case Key.W when !maj: Onglets.FermerOngletActif(); e.Handled = true; break;
-            case Key.F when maj: AfficherRechercheFichiers(); e.Handled = true; break;
-            // Ctrl+F, Ctrl+H, Ctrl+G : gérés par RechercheControl ; Ctrl+Tab : géré par OngletsControl
+            case Key.N when !maj && !alt: Onglets.NouvelOnglet(); e.Handled = true; break;
+            case Key.O when !maj && !alt: Ouvrir_Click(this, new RoutedEventArgs()); e.Handled = true; break;
+            case Key.S when !maj && !alt: Onglets.EnregistrerActif(); e.Handled = true; break;
+            case Key.S when maj && !alt: Onglets.EnregistrerTout(); e.Handled = true; break;
+            case Key.W when !maj && !alt: Onglets.FermerOngletActif(); e.Handled = true; break;
+            case Key.P when !maj && !alt: Palette.Ouvrir(modeCommandes: false); e.Handled = true; break;
+            case Key.P when maj && !alt: Palette.Ouvrir(modeCommandes: true); e.Handled = true; break;
+            case Key.E when maj && !alt: BasculerExplorateur(); e.Handled = true; break;
+            case Key.F when maj && !alt: AfficherRechercheFichiers(); e.Handled = true; break;
+            case Key.J when !maj && !alt: BasculerTerminal(); e.Handled = true; break;
+            case Key.I when alt && !maj: AfficherPanneauIA(AssistantIA.Visibility != Visibility.Visible); e.Handled = true; break;
         }
     }
 
@@ -252,11 +562,11 @@ public partial class MainWindow : Window
         if (e.Data.GetData(DataFormats.FileDrop) is not string[] chemins) return;
         foreach (var chemin in chemins)
         {
-            if (System.IO.File.Exists(chemin))
+            if (File.Exists(chemin))
             {
                 AppEvents.DemanderFichier(chemin);
             }
-            else if (System.IO.Directory.Exists(chemin))
+            else if (Directory.Exists(chemin))
             {
                 SettingsService.DernierDossier = chemin;
                 Explorateur.OuvrirDossier(chemin);
@@ -266,26 +576,43 @@ public partial class MainWindow : Window
 
     private void Fenetre_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
-        // PeutFermer demande d'enregistrer les onglets modifiés ; false = l'utilisateur a annulé
         if (!Onglets.PeutFermer())
         {
             e.Cancel = true;
             return;
         }
+
+        if (PanneauGauche.Visibility == Visibility.Visible && ColonneGauche.ActualWidth > 40)
+            SettingsService.LargeurPanneauGauche = ColonneGauche.ActualWidth;
+        if (Terminal.Visibility == Visibility.Visible && LigneBas.ActualHeight > 40)
+            SettingsService.HauteurPanneauBas = LigneBas.ActualHeight;
+        if (AssistantIA.Visibility == Visibility.Visible && ColonneIA.ActualWidth > 100)
+            SettingsService.LargeurPanneauIA = ColonneIA.ActualWidth;
+
         Terminal.Arreter();
         SettingsService.Enregistrer();
     }
 
     // ------------------------------------------------------------------
-    // Titre et barre de statut (lit Contexte.EditeurActif.TextArea.Caret)
+    // Titre et barre de statut
     // ------------------------------------------------------------------
 
-    private void MettreAJourTitre()
+    private void MettreAJourTitreEtDossier()
     {
-        var nom = Contexte.CheminActif == null ? "Sans titre" : System.IO.Path.GetFileName(Contexte.CheminActif);
+        var nom = Contexte.CheminActif == null ? "Sans titre" : Path.GetFileName(Contexte.CheminActif);
         Title = Contexte.DossierRacine == null
             ? $"{nom} - KeyCode"
-            : $"{nom} - {System.IO.Path.GetFileName(Contexte.DossierRacine)} - KeyCode";
+            : $"{nom} - {Path.GetFileName(Contexte.DossierRacine)} - KeyCode";
+
+        StatutDossier.Text = string.IsNullOrWhiteSpace(Contexte.DossierRacine)
+            ? "Aucun dossier"
+            : $"📁 {Path.GetFileName(Contexte.DossierRacine.TrimEnd(Path.DirectorySeparatorChar))}";
+    }
+
+    private void MettreAJourCompteurDiagnostics()
+    {
+        var (err, warn) = DiagnosticService.Compter();
+        BoutonStatutProblemes.Content = $"⊗ {err}   ⚠ {warn}";
     }
 
     private void SuivreEditeur()
@@ -299,7 +626,7 @@ public partial class MainWindow : Window
             _editeurSuivi.TextArea.Caret.PositionChanged += Caret_PositionChanged;
 
         MettreAJourStatut();
-        MettreAJourTitre();
+        MettreAJourTitreEtDossier();
     }
 
     private void Caret_PositionChanged(object? sender, EventArgs e) => MettreAJourStatut();
@@ -310,19 +637,26 @@ public partial class MainWindow : Window
         if (editeur == null)
         {
             StatutPosition.Text = "";
-            StatutLangage.Text = "";
+            StatutLangage.Text = Contexte.CheminActif != null ? Path.GetExtension(Contexte.CheminActif).ToUpperInvariant() : "";
             StatutEncodage.Text = "";
+            StatutIndentation.Text = "";
             return;
         }
 
         var caret = editeur.TextArea.Caret;
         StatutPosition.Text = $"Ln {caret.Line}, Col {caret.Column}";
 
-        var extension = Contexte.CheminActif == null ? "" : System.IO.Path.GetExtension(Contexte.CheminActif);
+        StatutIndentation.Text = editeur.Options.ConvertTabsToSpaces
+            ? $"Espaces: {editeur.Options.IndentationSize}"
+            : $"Tab: {editeur.Options.IndentationSize}";
+
+        var extension = Contexte.CheminActif == null ? "" : Path.GetExtension(Contexte.CheminActif);
         StatutLangage.Text = LangagesService.Obtenir(extension)?.Nom
+                             ?? ColorationService.ObtenirNomLangage(Contexte.CheminActif)
                              ?? editeur.SyntaxHighlighting?.Name
                              ?? "Texte brut";
 
         StatutEncodage.Text = (editeur.Encoding ?? System.Text.Encoding.UTF8).WebName.ToUpperInvariant();
+        MettreAJourZoomStatut();
     }
 }
