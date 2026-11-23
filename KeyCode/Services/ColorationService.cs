@@ -9,18 +9,13 @@ using ICSharpCode.AvalonEdit.Highlighting.Xshd;
 namespace KeyCode.Services;
 
 /// <summary>
-/// Coloration syntaxique selon l'extension du fichier.
-/// AvalonEdit ne fournit pas Python, Go, Rust, Batch ni JSON, et ses couleurs fixes sont illisibles sur
-/// fond sombre : les définitions (format XSHD) sont donc fabriquées ici, par langage et par thème.
-/// Si la fabrication échoue ou si l'extension est inconnue, on retombe sur les définitions d'AvalonEdit.
-/// Propriétaire : nyangono (module repris par cabrelds).
+/// Coloration syntaxique selon l'extension du fichier et le thème actif.
+/// Les définitions XSHD sont générées en mémoire avec les palettes Clair+ et Sombre+ de VS Code.
+/// Note importante : AvalonEdit compile les règles XSHD avec RegexOptions.IgnorePatternWhitespace,
+/// tout caractère '#' dans une règle doit donc être échappé en '\#'.
 /// </summary>
 public static class ColorationService
 {
-    // ------------------------------------------------------------------
-    // Palettes de couleurs (inspirées de VS Code Clair+ et Sombre+)
-    // ------------------------------------------------------------------
-
     private sealed record Palette(
         string Commentaire, string Chaine, string MotCle, string Controle,
         string Type, string Nombre, string Prepro, string Variable);
@@ -29,31 +24,24 @@ public static class ColorationService
         new("#008000", "#A31515", "#0000FF", "#AF00DB", "#267F99", "#098658", "#808080", "#001080");
 
     private static readonly Palette _paletteSombre =
-        new("#6A9955", "#CE9178", "#569CD6", "#C586C0", "#4EC9B0", "#B5CEA8", "#9B9B9B", "#9CDCFE");
+        new("#6A9955", "#CE9178", "#569CD6", "#C586C0", "#4EC9B0", "#B5CEA8", "#C586C0", "#9CDCFE");
 
-    // ------------------------------------------------------------------
-    // Description des langages
-    // ------------------------------------------------------------------
-
-    // Une chaîne de caractères : délimiteurs (expressions régulières), sur plusieurs lignes ou non, avec \ d'échappement ou non
     private sealed record Chaine(string Debut, string Fin, bool Multiligne = false, bool Echappement = true);
-
-    // Une règle libre : nom de couleur + expression régulière
     private sealed record Regle(string Couleur, string Expression);
 
     private sealed class Langage
     {
         public required string Nom { get; init; }
         public string[] Extensions { get; init; } = [];
-        public string[] Controle { get; init; } = [];      // if, for, return...
-        public string[] MotsCles { get; init; } = [];      // class, public...
-        public string[] Types { get; init; } = [];         // int, string...
+        public string[] Controle { get; init; } = [];
+        public string[] MotsCles { get; init; } = [];
+        public string[] Types { get; init; } = [];
         public string[] CommentairesLigne { get; init; } = [];
         public (string Debut, string Fin)? CommentaireBloc { get; init; }
         public Chaine[] Chaines { get; init; } = [];
         public Regle[] Regles { get; init; } = [];
         public bool IgnorerCasse { get; init; }
-        public bool Markup { get; init; }                  // HTML / XML
+        public bool Markup { get; init; }
     }
 
     private const string TroisGuillemets = "\"\"\"";
@@ -66,17 +54,18 @@ public static class ColorationService
         liste.Split(' ', StringSplitOptions.RemoveEmptyEntries);
 
     private static readonly (string Debut, string Fin) _blocC = (@"/\*", @"\*/");
-    private const string DirectivePrepro = @"^[ \t]*#[ \t]*[a-z]+";
+    // '#' doit être échappé en '\#' à cause de RegexOptions.IgnorePatternWhitespace dans AvalonEdit
+    private const string DirectivePrepro = @"^[ \t]*\#[ \t]*[A-Za-z]+";
 
     private static readonly Langage[] _langages =
     [
         new()
         {
             Nom = "Python", Extensions = [".py", ".pyw"],
-            Controle = Mots("if elif else for while break continue return try except finally raise with yield pass assert import from as await async lambda del global nonlocal"),
+            Controle = Mots("if elif else for while break continue return try except finally raise with yield pass assert import from as await async lambda del global nonlocal match case"),
             MotsCles = Mots("def class and or not in is None True False self cls"),
-            Types = Mots("int str float bool list dict set tuple bytes object print input len range open type enumerate zip map filter sum min max abs sorted reversed isinstance super"),
-            CommentairesLigne = ["#"],
+            Types = Mots("int str float bool list dict set tuple bytes object print input len range open type enumerate zip map filter sum min max abs sorted reversed isinstance super Exception"),
+            CommentairesLigne = [@"\#"],
             Chaines = [new(TroisGuillemets, TroisGuillemets, true), new(TroisApostrophes, TroisApostrophes, true), _guillemets, _apostrophes],
             Regles = [new("Prepro", @"@[A-Za-z_][\w.]*")],
         },
@@ -85,7 +74,16 @@ public static class ColorationService
             Nom = "JavaScript", Extensions = [".js", ".mjs", ".cjs", ".jsx"],
             Controle = Mots("if else for while do switch case break continue return throw try catch finally yield await default"),
             MotsCles = Mots("async class const debugger delete export extends function import in instanceof let new of static super this typeof var void with null undefined true false get set"),
-            Types = Mots("Object Array String Number Boolean Map Set Promise Date Math JSON console"),
+            Types = Mots("Object Array String Number Boolean Map Set Promise Date Math JSON console window document"),
+            CommentairesLigne = ["//"], CommentaireBloc = _blocC,
+            Chaines = [_guillemets, _apostrophes, new("`", "`", true)],
+        },
+        new()
+        {
+            Nom = "TypeScript", Extensions = [".ts", ".tsx"],
+            Controle = Mots("if else for while do switch case break continue return throw try catch finally yield await default"),
+            MotsCles = Mots("abstract async as class const declare debugger delete enum export extends function implements import in instanceof interface keyof let module namespace new of private protected public readonly static super this type typeof var void with null undefined true false get set"),
+            Types = Mots("any boolean never number object string symbol unknown void bigint Array Record Partial Required Readonly Promise Map Set console"),
             CommentairesLigne = ["//"], CommentaireBloc = _blocC,
             Chaines = [_guillemets, _apostrophes, new("`", "`", true)],
         },
@@ -94,7 +92,7 @@ public static class ColorationService
             Nom = "C#", Extensions = [".cs"],
             Controle = Mots("if else for foreach while do switch case break continue return goto throw try catch finally yield await default when"),
             MotsCles = Mots("abstract as async base class const delegate enum event explicit extern false fixed implicit in interface internal is lock namespace new null operator out override params partial private protected public readonly record ref sealed sizeof stackalloc static struct this true typeof unchecked unsafe using virtual volatile where get set init required"),
-            Types = Mots("bool byte char decimal double float int long object sbyte short string uint ulong ushort void var dynamic nint nuint"),
+            Types = Mots("bool byte char decimal double float int long object sbyte short string uint ulong ushort void var dynamic nint nuint Task List Dictionary StringBuilder Console"),
             CommentairesLigne = ["//"], CommentaireBloc = _blocC,
             Chaines = [_guillemets, _apostrophes],
             Regles = [new("Prepro", DirectivePrepro)],
@@ -117,17 +115,17 @@ public static class ColorationService
             Types = Mots("char double float int long short signed unsigned void size_t bool FILE"),
             CommentairesLigne = ["//"], CommentaireBloc = _blocC,
             Chaines = [_guillemets, _apostrophes],
-            Regles = [new("Prepro", DirectivePrepro), new("Chaine", @"(?<=^[ \t]*#[ \t]*include[ \t]*)<[^>]*>")],
+            Regles = [new("Prepro", DirectivePrepro), new("Chaine", @"(?<=^[ \t]*\#[ \t]*include[ \t]*)<[^>]*>")],
         },
         new()
         {
             Nom = "C++", Extensions = [".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx"],
             Controle = Mots("if else for while do switch case break continue return goto default try catch throw"),
             MotsCles = Mots("auto class const constexpr delete enum explicit extern false final friend inline mutable namespace new noexcept nullptr operator override private protected public static struct template this true typedef typename union using virtual volatile"),
-            Types = Mots("bool char char16_t char32_t double float int long short signed unsigned void wchar_t size_t string vector map set"),
+            Types = Mots("bool char char16_t char32_t double float int long short signed unsigned void wchar_t size_t string vector map set std cout cin endl"),
             CommentairesLigne = ["//"], CommentaireBloc = _blocC,
             Chaines = [_guillemets, _apostrophes],
-            Regles = [new("Prepro", DirectivePrepro), new("Chaine", @"(?<=^[ \t]*#[ \t]*include[ \t]*)<[^>]*>")],
+            Regles = [new("Prepro", DirectivePrepro), new("Chaine", @"(?<=^[ \t]*\#[ \t]*include[ \t]*)<[^>]*>")],
         },
         new()
         {
@@ -135,7 +133,7 @@ public static class ColorationService
             Controle = Mots("if elseif else endif for foreach endforeach while endwhile do switch case break continue return throw try catch finally yield match default"),
             MotsCles = Mots("abstract and as class clone const declare echo empty enum extends final function global implements include include_once instanceof interface isset list namespace new or print private protected public readonly require require_once static trait use var xor true false null"),
             Types = Mots("int float string bool array object void mixed self parent"),
-            CommentairesLigne = ["//", "#"], CommentaireBloc = _blocC,
+            CommentairesLigne = ["//", @"\#"], CommentaireBloc = _blocC,
             Chaines = [_guillemets, _apostrophes],
             Regles = [new("Prepro", @"<\?php|<\?=|\?>"), new("Variable", @"\$[A-Za-z_]\w*")],
         },
@@ -144,7 +142,7 @@ public static class ColorationService
             Nom = "PowerShell", Extensions = [".ps1", ".psm1", ".psd1"], IgnorerCasse = true,
             Controle = Mots("if elseif else for foreach while do switch break continue return throw try catch finally exit"),
             MotsCles = Mots("function param begin process end in filter class using"),
-            CommentairesLigne = ["#"], CommentaireBloc = (@"<#", @"#>"),
+            CommentairesLigne = [@"\#"], CommentaireBloc = (@"<\#", @"\#>"),
             Chaines = [new("\"", "\"", false, false), new("'", "'", false, false)],
             Regles = [new("Variable", @"\$\{[^}]*\}|\$[\w:]+"), new("Type", @"\b[A-Za-z]+-[A-Za-z]\w+\b")],
         },
@@ -178,9 +176,50 @@ public static class ColorationService
             [
                 new("Chaine", @"'(\\.|[^'\\])'"),
                 new("Type", @"'[A-Za-z_]\w*(?!['\w])"),
-                new("Prepro", @"#!?\[[^\]]*\]"),
+                new("Prepro", @"\#!?\[[^\]]*\]"),
                 new("Prepro", @"\b[a-z_]\w*!(?=[\(\[\{])"),
             ],
+        },
+        new()
+        {
+            Nom = "CSS", Extensions = [".css", ".scss"],
+            CommentaireBloc = _blocC,
+            Chaines = [_guillemets, _apostrophes],
+            Regles =
+            [
+                new("Prepro", @"@[A-Za-z-]+"),
+                new("Type", @"\.[A-Za-z_-][\w-]*|\#[A-Za-z0-9_-]+"),
+                new("MotCle", @"[A-Za-z-]+(?=[ \t]*:)"),
+            ],
+        },
+        new()
+        {
+            Nom = "SQL", Extensions = [".sql"], IgnorerCasse = true,
+            Controle = Mots("SELECT FROM WHERE JOIN INNER LEFT RIGHT FULL ON GROUP BY HAVING ORDER ASC DESC LIMIT OFFSET UNION ALL INSERT INTO VALUES UPDATE SET DELETE CREATE ALTER DROP TABLE VIEW INDEX TRIGGER CASE WHEN THEN ELSE END"),
+            MotsCles = Mots("AS AND OR NOT IN IS NULL LIKE BETWEEN EXISTS DISTINCT PRIMARY KEY FOREIGN REFERENCES DEFAULT UNIQUE CHECK CONSTRAINT"),
+            Types = Mots("INT INTEGER BIGINT SMALLINT VARCHAR CHAR TEXT BOOLEAN DATE DATETIME TIMESTAMP DECIMAL FLOAT DOUBLE BLOB"),
+            CommentairesLigne = ["--"], CommentaireBloc = _blocC,
+            Chaines = [new("'", "'", false, false)],
+        },
+        new()
+        {
+            Nom = "Markdown", Extensions = [".md"],
+            Chaines = [new("```", "```", true, false), new("`", "`", false, false)],
+            Regles =
+            [
+                new("MotCle", @"^[ \t]*\#{1,6}[^\r\n]*"),
+                new("Controle", @"^[ \t]*[-*+][ \t]+|^[ \t]*\d+\.[ \t]+"),
+                new("Type", @"\*\*[^*\r\n]+\*\*|__[^_\r\n]+__"),
+                new("Chaine", @"\[[^\]\r\n]+\]\([^\)\r\n]+\)"),
+            ],
+        },
+        new()
+        {
+            Nom = "YAML", Extensions = [".yml", ".yaml"],
+            MotsCles = Mots("true false null yes no on off"),
+            CommentairesLigne = [@"\#"],
+            Chaines = [_guillemets, _apostrophes],
+            Regles = [new("MotCle", @"^[ \t\-]*[A-Za-z0-9_.-]+(?=[ \t]*:)")],
         },
         new()
         {
@@ -194,6 +233,7 @@ public static class ColorationService
 
     private static readonly Dictionary<string, Langage> _parExtension = new();
     private static readonly Dictionary<string, IHighlightingDefinition?> _cache = new();
+    private static readonly object _verrouCache = new();
 
     static ColorationService()
     {
@@ -202,34 +242,43 @@ public static class ColorationService
                 _parExtension[extension] = langage;
     }
 
-    // ------------------------------------------------------------------
-    // API publique
-    // ------------------------------------------------------------------
-
     /// <summary>Applique la coloration correspondant à l'extension du fichier et au thème actuel.</summary>
     public static void Appliquer(TextEditor editeur, string chemin)
     {
-        var definition = ObtenirDefinition(Path.GetExtension(chemin));
-        // On ne remplace pas la définition si c'est déjà la bonne (évite de tout recolorier pour rien)
-        if (!ReferenceEquals(editeur.SyntaxHighlighting, definition))
-            editeur.SyntaxHighlighting = definition;
+        try
+        {
+            var extension = Path.GetExtension(chemin);
+            var definition = ObtenirDefinition(extension);
+            if (!ReferenceEquals(editeur.SyntaxHighlighting, definition))
+                editeur.SyntaxHighlighting = definition;
+        }
+        catch (Exception)
+        {
+            editeur.SyntaxHighlighting = null;
+        }
     }
 
     /// <summary>Mots-clés du langage du fichier (pour l'auto-complétion). Liste vide si le langage est inconnu.</summary>
     public static IReadOnlyList<string> ObtenirMotsCles(string? chemin)
     {
         if (string.IsNullOrEmpty(chemin)) return Array.Empty<string>();
-        if (!_parExtension.TryGetValue(Path.GetExtension(chemin).ToLowerInvariant(), out var langage))
+        var ext = Path.GetExtension(chemin).ToLowerInvariant();
+        if (!_parExtension.TryGetValue(ext, out var langage))
             return Array.Empty<string>();
         return langage.Controle.Concat(langage.MotsCles).Concat(langage.Types).ToList();
     }
 
-    // ------------------------------------------------------------------
-    // Fabrication des définitions
-    // ------------------------------------------------------------------
+    /// <summary>Retourne le nom du langage pour affichage dans la barre de statut.</summary>
+    public static string? ObtenirNomLangage(string? chemin)
+    {
+        if (string.IsNullOrWhiteSpace(chemin)) return null;
+        var ext = Path.GetExtension(chemin).ToLowerInvariant();
+        return _parExtension.TryGetValue(ext, out var langage) ? langage.Nom : null;
+    }
 
     private static IHighlightingDefinition? ObtenirDefinition(string extension)
     {
+        if (string.IsNullOrWhiteSpace(extension)) return null;
         extension = extension.ToLowerInvariant();
 
         if (!_parExtension.TryGetValue(extension, out var langage))
@@ -237,7 +286,11 @@ public static class ColorationService
 
         var sombre = string.Equals(ThemeManager.ThemeActuel, "Sombre", StringComparison.OrdinalIgnoreCase);
         var cle = langage.Nom + (sombre ? "|sombre" : "|clair");
-        if (_cache.TryGetValue(cle, out var enCache)) return enCache;
+
+        lock (_verrouCache)
+        {
+            if (_cache.TryGetValue(cle, out var enCache)) return enCache;
+        }
 
         IHighlightingDefinition? definition;
         try
@@ -248,11 +301,13 @@ public static class ColorationService
         }
         catch (Exception)
         {
-            // Définition invalide : on garde au moins la coloration d'origine d'AvalonEdit
             definition = HighlightingManager.Instance.GetDefinitionByExtension(extension);
         }
 
-        _cache[cle] = definition;
+        lock (_verrouCache)
+        {
+            _cache[cle] = definition;
+        }
         return definition;
     }
 
@@ -283,7 +338,6 @@ public static class ColorationService
         }
         else
         {
-            // Les commentaires et les chaînes d'abord : un mot-clé écrit dans une chaîne n'est pas coloré
             if (langage.CommentaireBloc is { } bloc)
                 AjouterSpan(sb, "Commentaire", bloc.Debut, bloc.Fin, multiligne: true, echappement: false);
 
@@ -317,7 +371,6 @@ public static class ColorationService
         sb.Append("<Span color=\"").Append(couleur).Append('"').Append(multiligne ? " multiline=\"true\"" : "")
           .Append("><Begin>").Append(Echapper(debut)).Append("</Begin><End>").Append(Echapper(fin)).Append("</End>");
 
-        // Un \ dans la chaîne protège le caractère suivant : "a\"b" reste une seule chaîne
         if (echappement)
             sb.Append("<RuleSet><Span begin=\"\\\\\" end=\".\"/></RuleSet>");
 
@@ -333,7 +386,6 @@ public static class ColorationService
         sb.Append("</Keywords>");
     }
 
-    // HTML et XML : commentaires, balises avec leurs attributs
     private static void AjouterMarkup(StringBuilder sb)
     {
         AjouterSpan(sb, "Commentaire", "<!--", "-->", multiligne: true, echappement: false);
@@ -342,7 +394,7 @@ public static class ColorationService
           .Append("</Begin><End>").Append(Echapper(@"[/?]?>")).Append("</End><RuleSet>");
         AjouterSpan(sb, "Chaine", "\"", "\"", multiligne: false, echappement: false);
         AjouterSpan(sb, "Chaine", "'", "'", multiligne: false, echappement: false);
-        sb.Append("<Rule color=\"Attribut\">").Append(Echapper(@"[\w:.\-]+(?=\s*=)")).Append("</Rule>");
+        sb.Append("<Rule color=\"Attribut\">").Append(Echapper(@"[\w:.\-]+(?=[ \t]*=)")).Append("</Rule>");
         sb.Append("</RuleSet></Span>");
     }
 }

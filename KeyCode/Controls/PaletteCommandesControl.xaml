@@ -1,0 +1,32 @@
+<UserControl x:Class="KeyCode.Controls.PaletteCommandesControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Visibility="Collapsed"
+             HorizontalAlignment="Center"
+             VerticalAlignment="Top"
+             Width="560"
+             Margin="0,8,0,0"
+             PreviewKeyDown="Palette_PreviewKeyDown">
+    <Border Background="{DynamicResource ThemeFondSecondaire}"
+            BorderBrush="{DynamicResource ThemeAccent}"
+            BorderThickness="1"
+            CornerRadius="6"
+            Padding="8">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="18" ShadowDepth="4" Opacity="0.45"/>
+        </Border.Effect>
+        <StackPanel>
+            <TextBox x:Name="ChampFiltre"
+                     Style="{StaticResource ChampVsCode}"
+                     FontSize="13"
+                     Padding="8,6"
+                     TextChanged="ChampFiltre_TextChanged"
+                     PreviewKeyDown="ChampFiltre_PreviewKeyDown"/>
+            <ListBox x:Name="ListeElements"
+                     MaxHeight="280"
+                     Margin="0,6,0,0"
+                     FontSize="12"
+                     MouseDoubleClick="ListeElements_DoubleClick"/>
+        </StackPanel>
+    </Border>
+</UserControl>

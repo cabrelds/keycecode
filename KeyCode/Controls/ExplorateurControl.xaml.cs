@@ -1,349 +1,468 @@
-using System;
 using System.IO;
-using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using KeyCode.Services;
-namespace KeyCode.Controls
+
+namespace KeyCode.Controls;
+
+/// <summary>
+/// Explorateur de fichiers : affiche l'arborescence d'un dossier avec chargement paresseux,
+/// préservation de l'état déplié à l'actualisation et synchronisation des onglets lors des opérations.
+/// </summary>
+public partial class ExplorateurControl : UserControl
 {
-    /// <summary>
-    /// Explorateur de fichiers : affiche l'arborescence d'un dossier.
-    /// Les sous-dossiers sont chargés à l'ouverture d'un nœud (chargement paresseux).
-    /// </summary>
-    public partial class ExplorateurControl : UserControl
+    private static readonly string[] Ignores = { "bin", "obj", ".git" };
+    private const string Factice = "__factice__";
+
+    private string? _dossierRacine;
+
+    public ExplorateurControl()
     {
-        // Éléments ignorés à l'affichage
-        private static readonly string[] Ignores = { "bin", "obj", ".git" };
+        InitializeComponent();
+    }
 
-        // Nœud factice pour afficher la flèche d'expansion avant le chargement réel
-        private const string Factice = "__factice__";
-
-        private string? _dossierRacine;
-
-        public ExplorateurControl()
+    /// <summary>Affiche le dossier, met à jour le contexte et prévient l'application.</summary>
+    public void OuvrirDossier(string chemin)
+    {
+        if (string.IsNullOrWhiteSpace(chemin) || !Directory.Exists(chemin))
         {
-            InitializeComponent();
+            MessageBox.Show("Dossier introuvable : " + chemin, "KeyCode",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
         }
 
-        // ---------------------------------------------------------------
-        // API publique
-        // ---------------------------------------------------------------
+        _dossierRacine = Path.GetFullPath(chemin);
+        Contexte.DossierRacine = _dossierRacine;
 
-        /// <summary>Affiche le dossier, met à jour le contexte et prévient l'application.</summary>
-        public void OuvrirDossier(string chemin)
+        Reconstruire(null);
+
+        AppEvents.SignalerDossierOuvert(_dossierRacine);
+    }
+
+    /// <summary>Recharge l'arborescence en préservant les nœuds actuellement dépliés.</summary>
+    public void Actualiser()
+    {
+        if (_dossierRacine == null) return;
+        var deplies = CollecterDossiersDeplies();
+        Reconstruire(deplies);
+    }
+
+    private HashSet<string> CollecterDossiersDeplies()
+    {
+        var resultat = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        void Parcourir(ItemCollection items)
         {
-            if (string.IsNullOrWhiteSpace(chemin) || !Directory.Exists(chemin))
+            foreach (var obj in items)
             {
-                MessageBox.Show("Dossier introuvable : " + chemin, "KeyCode",
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
+                if (obj is not TreeViewItem noeud || noeud.Tag is not string chemin) continue;
+                if (noeud.IsExpanded)
+                {
+                    resultat.Add(chemin);
+                    Parcourir(noeud.Items);
+                }
             }
+        }
+        Parcourir(Arbre.Items);
+        return resultat;
+    }
 
-            _dossierRacine = chemin;
-            Contexte.DossierRacine = chemin;
-
-            Reconstruire();
-
-            AppEvents.SignalerDossierOuvert(chemin);
+    private void Reconstruire(HashSet<string>? deplies)
+    {
+        Arbre.Items.Clear();
+        if (_dossierRacine == null)
+        {
+            TexteAucunDossier.Visibility = Visibility.Visible;
+            return;
         }
 
-        /// <summary>Recharge l'arborescence en conservant la racine actuelle.</summary>
-        public void Actualiser()
+        TexteAucunDossier.Visibility = Visibility.Collapsed;
+        var racine = CreerNoeud(_dossierRacine, true);
+        var nomRacine = Path.GetFileName(_dossierRacine.TrimEnd(Path.DirectorySeparatorChar));
+        racine.Header = CreerEntete(string.IsNullOrEmpty(nomRacine) ? _dossierRacine : nomRacine, true, _dossierRacine);
+        Arbre.Items.Add(racine);
+        racine.IsExpanded = true;
+
+        if (deplies != null)
+            RestaurerDeplies(racine, deplies);
+    }
+
+    private void RestaurerDeplies(TreeViewItem parent, HashSet<string> deplies)
+    {
+        foreach (var obj in parent.Items)
         {
-            if (_dossierRacine == null) return;
-            Reconstruire();
-        }
-
-        // ---------------------------------------------------------------
-        // Construction de l'arbre
-        // ---------------------------------------------------------------
-
-        private void Reconstruire()
-        {
-            Arbre.Items.Clear();
-            if (_dossierRacine == null) return;
-
-            var racine = CreerNoeud(_dossierRacine, true);
-            racine.Header = CreerEntete(Path.GetFileName(_dossierRacine.TrimEnd(Path.DirectorySeparatorChar)) is { Length: > 0 } nom
-                                        ? nom : _dossierRacine, true);
-            Arbre.Items.Add(racine);
-            racine.IsExpanded = true; // déclenche le chargement du premier niveau
-        }
-
-        private TreeViewItem CreerNoeud(string chemin, bool estDossier)
-        {
-            var item = new TreeViewItem
+            if (obj is not TreeViewItem enfant || enfant.Tag is not string chemin) continue;
+            if (Directory.Exists(chemin) && deplies.Contains(chemin))
             {
-                Header = CreerEntete(Path.GetFileName(chemin), estDossier),
-                Tag = chemin
-            };
-
-            if (estDossier)
-                item.Items.Add(Factice); // permet d'afficher la flèche d'ouverture
-
-            return item;
+                enfant.IsExpanded = true;
+                RestaurerDeplies(enfant, deplies);
+            }
         }
+    }
 
-        /// <summary>En-tête avec une icône différente pour dossier et fichier.</summary>
-        private static StackPanel CreerEntete(string texte, bool estDossier)
+    private TreeViewItem CreerNoeud(string chemin, bool estDossier)
+    {
+        var item = new TreeViewItem
         {
-            var panneau = new StackPanel { Orientation = Orientation.Horizontal };
+            Header = CreerEntete(Path.GetFileName(chemin), estDossier, chemin),
+            Tag = chemin
+        };
+
+        if (estDossier)
+            item.Items.Add(Factice);
+
+        return item;
+    }
+
+    private static StackPanel CreerEntete(string texte, bool estDossier, string chemin)
+    {
+        var panneau = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 1, 0, 1) };
+
+        if (estDossier)
+        {
             panneau.Children.Add(new TextBlock
             {
-                Text = estDossier ? "📁" : "📄",
-                Margin = new Thickness(0, 0, 5, 0)
+                Text = "▸📁",
+                FontSize = 11,
+                Foreground = ThemeManager.Pinceau("ThemeAccent"),
+                Margin = new Thickness(0, 0, 5, 0),
+                VerticalAlignment = VerticalAlignment.Center
             });
-            panneau.Children.Add(new TextBlock { Text = texte });
-            return panneau;
+            // Affiche uniquement l'icône dossier proprement
+            ((TextBlock)panneau.Children[0]).Text = "📁";
         }
-
-        private static bool EstIgnore(string chemin)
+        else
         {
-            var nom = Path.GetFileName(chemin.TrimEnd(Path.DirectorySeparatorChar));
-            return Ignores.Contains(nom, StringComparer.OrdinalIgnoreCase);
-        }
+            var (sigle, couleurHex) =BadgeFichier(chemin);
+            var pinceau = new SolidColorBrush((Color)ColorConverter.ConvertFromString(couleurHex));
+            pinceau.Freeze();
 
-        /// <summary>Charge le contenu d'un dossier dans son nœud.</summary>
-        private void ChargerEnfants(TreeViewItem noeud)
-        {
-            if (noeud.Tag is not string chemin) return;
-
-            noeud.Items.Clear();
-            try
+            panneau.Children.Add(new Border
             {
-                foreach (var dossier in Directory.GetDirectories(chemin)
-                             .Where(d => !EstIgnore(d))
-                             .OrderBy(d => d, StringComparer.OrdinalIgnoreCase))
+                Background = pinceau,
+                CornerRadius = new CornerRadius(2),
+                Padding = new Thickness(3, 0, 3, 0),
+                Margin = new Thickness(0, 0, 6, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                Child = new TextBlock
                 {
-                    noeud.Items.Add(CreerNoeud(dossier, true));
+                    Text = sigle,
+                    FontSize = 8,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = Brushes.White
                 }
-
-                foreach (var fichier in Directory.GetFiles(chemin)
-                             .Where(f => !EstIgnore(f))
-                             .OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
-                {
-                    noeud.Items.Add(CreerNoeud(fichier, false));
-                }
-            }
-            catch (UnauthorizedAccessException)
-            {
-                // Dossier inaccessible : on le laisse vide
-            }
-            catch (IOException)
-            {
-                // Dossier supprimé entre-temps : on le laisse vide
-            }
+            });
         }
 
-        // ---------------------------------------------------------------
-        // Évènements de l'arbre
-        // ---------------------------------------------------------------
-
-        // Chargement paresseux : seulement quand on ouvre le nœud
-        private void Noeud_Ouvert(object sender, RoutedEventArgs e)
+        panneau.Children.Add(new TextBlock
         {
-            if (e.OriginalSource is TreeViewItem noeud
-                && noeud.Items.Count == 1
-                && noeud.Items[0] is string s && s == Factice)
-            {
-                ChargerEnfants(noeud);
-            }
-        }
+            Text = texte,
+            VerticalAlignment = VerticalAlignment.Center
+        });
+        return panneau;
+    }
 
-        // Double-clic sur un fichier : demande son ouverture
-        private void Arbre_DoubleClic(object sender, MouseButtonEventArgs e)
+    private static (string Sigle, string CouleurHex) BadgeFichier(string chemin)
+    {
+        var ext = Path.GetExtension(chemin).ToLowerInvariant();
+        return ext switch
         {
-            if (Arbre.SelectedItem is TreeViewItem noeud
-                && noeud.Tag is string chemin
-                && File.Exists(chemin))
-            {
-                AppEvents.DemanderFichier(chemin);
-                e.Handled = true;
-            }
-        }
+            ".py" or ".pyw" => ("PY", "#3572A5"),
+            ".cs" => ("C#", "#68217A"),
+            ".js" or ".mjs" => ("JS", "#C99A14"),
+            ".ts" or ".tsx" => ("TS", "#3178C6"),
+            ".java" => ("JV", "#B07219"),
+            ".c" or ".h" => ("C", "#555555"),
+            ".cpp" or ".hpp" => ("C++", "#E04A7A"),
+            ".php" => ("PHP", "#4F5D95"),
+            ".go" => ("GO", "#00ADD8"),
+            ".rs" => ("RS", "#B7410E"),
+            ".html" or ".htm" => ("HTM", "#E34C26"),
+            ".css" or ".scss" => ("CSS", "#563D7C"),
+            ".json" => ("{}", "#2E8B57"),
+            ".xml" or ".xaml" or ".csproj" => ("<>", "#D96523"),
+            ".md" => ("MD", "#1F6FEB"),
+            ".png" or ".jpg" or ".jpeg" or ".gif" or ".bmp" or ".ico" or ".svg" => ("IMG", "#008B8B"),
+            _ => ("•", "#6E7681")
+        };
+    }
 
-        // Sélectionne l'élément sous la souris avant d'afficher le menu contextuel
-        private void Arbre_ClicDroitPrealable(object sender, MouseButtonEventArgs e)
+    private static bool EstIgnore(string chemin)
+    {
+        var nom = Path.GetFileName(chemin.TrimEnd(Path.DirectorySeparatorChar));
+        return Ignores.Contains(nom, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private void ChargerEnfants(TreeViewItem noeud)
+    {
+        if (noeud.Tag is not string chemin) return;
+
+        noeud.Items.Clear();
+        try
         {
-            var source = e.OriginalSource as DependencyObject;
-            while (source != null && source is not TreeViewItem)
-                source = VisualTreeHelper.GetParent(source);
-
-            if (source is TreeViewItem noeud)
+            foreach (var dossier in Directory.GetDirectories(chemin)
+                         .Where(d => !EstIgnore(d))
+                         .OrderBy(d => d, StringComparer.OrdinalIgnoreCase))
             {
-                noeud.IsSelected = true;
-                noeud.Focus();
+                noeud.Items.Add(CreerNoeud(dossier, true));
+            }
+
+            foreach (var fichier in Directory.GetFiles(chemin)
+                         .Where(f => !EstIgnore(f))
+                         .OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
+            {
+                noeud.Items.Add(CreerNoeud(fichier, false));
             }
         }
+        catch (UnauthorizedAccessException) { }
+        catch (IOException) { }
+    }
 
-        // ---------------------------------------------------------------
-        // Menu contextuel
-        // ---------------------------------------------------------------
-
-        private TreeViewItem? NoeudSelectionne => Arbre.SelectedItem as TreeViewItem;
-
-        private void Menu_Ouvert(object sender, RoutedEventArgs e)
+    private void Noeud_Ouvert(object sender, RoutedEventArgs e)
+    {
+        if (e.OriginalSource is TreeViewItem noeud
+            && noeud.Items.Count == 1
+            && noeud.Items[0] is string s && s == Factice)
         {
-            bool aSelection = NoeudSelectionne != null;
-            bool estRacine = aSelection && NoeudSelectionne!.Tag is string c
-                             && string.Equals(c, _dossierRacine, StringComparison.OrdinalIgnoreCase);
-
-            MenuNouveauFichier.IsEnabled = _dossierRacine != null;
-            MenuNouveauDossier.IsEnabled = _dossierRacine != null;
-            MenuRenommer.IsEnabled = aSelection && !estRacine;
-            MenuSupprimer.IsEnabled = aSelection && !estRacine;
+            ChargerEnfants(noeud);
         }
+    }
 
-        /// <summary>Dossier où créer un élément : le dossier sélectionné, ou le parent du fichier sélectionné.</summary>
-        private string? DossierCible()
+    private void Arbre_DoubleClic(object sender, MouseButtonEventArgs e)
+    {
+        // Vérifie que le double-clic a bien eu lieu sur un TreeViewItem (pas dans le vide)
+        var source = e.OriginalSource as DependencyObject;
+        while (source != null && source is not TreeViewItem)
+            source = VisualTreeHelper.GetParent(source);
+
+        if (source is TreeViewItem noeud && noeud.Tag is string chemin && File.Exists(chemin))
         {
-            if (NoeudSelectionne?.Tag is string chemin)
-                return Directory.Exists(chemin) ? chemin : Path.GetDirectoryName(chemin);
-            return _dossierRacine;
+            AppEvents.DemanderFichier(chemin);
+            e.Handled = true;
         }
+    }
 
-        private void NouveauFichier_Click(object sender, RoutedEventArgs e)
+    private void Arbre_ClicDroitPrealable(object sender, MouseButtonEventArgs e)
+    {
+        var source = e.OriginalSource as DependencyObject;
+        while (source != null && source is not TreeViewItem)
+            source = VisualTreeHelper.GetParent(source);
+
+        if (source is TreeViewItem noeud)
         {
-            var dossier = DossierCible();
-            if (dossier == null) return;
-
-            var nom = DemanderNom("Nouveau fichier", "Nom du fichier :", "");
-            if (string.IsNullOrWhiteSpace(nom)) return;
-
-            var chemin = Path.Combine(dossier, nom);
-            if (File.Exists(chemin) || Directory.Exists(chemin))
-            {
-                MessageBox.Show("Ce nom existe déjà.", "KeyCode", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            try
-            {
-                File.WriteAllText(chemin, string.Empty);
-                Actualiser();
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Impossible de créer le fichier : " + ex.Message, "KeyCode",
-                    MessageBoxButton.OK, MessageBoxImage.Error);
-            }
+            noeud.IsSelected = true;
+            noeud.Focus();
         }
+    }
 
-        private void NouveauDossier_Click(object sender, RoutedEventArgs e)
+    private TreeViewItem? NoeudSelectionne => Arbre.SelectedItem as TreeViewItem;
+
+    private void Menu_Ouvert(object sender, RoutedEventArgs e)
+    {
+        var aSelection = NoeudSelectionne != null;
+        var estRacine = aSelection && NoeudSelectionne!.Tag is string c
+                         && string.Equals(c, _dossierRacine, StringComparison.OrdinalIgnoreCase);
+
+        MenuNouveauFichier.IsEnabled = _dossierRacine != null;
+        MenuNouveauDossier.IsEnabled = _dossierRacine != null;
+        MenuRenommer.IsEnabled = aSelection && !estRacine;
+        MenuSupprimer.IsEnabled = aSelection && !estRacine;
+        MenuActualiser.IsEnabled = _dossierRacine != null;
+    }
+
+    private string? DossierCible()
+    {
+        if (NoeudSelectionne?.Tag is string chemin)
+            return Directory.Exists(chemin) ? chemin : Path.GetDirectoryName(chemin);
+        return _dossierRacine;
+    }
+
+    private void Actualiser_Click(object sender, RoutedEventArgs e) => Actualiser();
+
+    private void NouveauFichier_Click(object sender, RoutedEventArgs e)
+    {
+        var dossier = DossierCible();
+        if (dossier == null) return;
+
+        var nom = DemanderNom("Nouveau fichier", "Nom du fichier :", "");
+        if (string.IsNullOrWhiteSpace(nom) || !NomValide(nom)) return;
+
+        var chemin = Path.Combine(dossier, nom);
+        if (File.Exists(chemin) || Directory.Exists(chemin))
         {
-            var dossier = DossierCible();
-            if (dossier == null) return;
-
-            var nom = DemanderNom("Nouveau dossier", "Nom du dossier :", "");
-            if (string.IsNullOrWhiteSpace(nom)) return;
-
-            var chemin = Path.Combine(dossier, nom);
-            if (File.Exists(chemin) || Directory.Exists(chemin))
-            {
-                MessageBox.Show("Ce nom existe déjà.", "KeyCode", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            try
-            {
-                Directory.CreateDirectory(chemin);
-                Actualiser();
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Impossible de créer le dossier : " + ex.Message, "KeyCode",
-                    MessageBoxButton.OK, MessageBoxImage.Error);
-            }
+            MessageBox.Show("Ce nom existe déjà.", "KeyCode", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
         }
 
-        private void Renommer_Click(object sender, RoutedEventArgs e)
+        try
         {
-            if (NoeudSelectionne?.Tag is not string ancien) return;
-
-            var nouveauNom = DemanderNom("Renommer", "Nouveau nom :", Path.GetFileName(ancien));
-            if (string.IsNullOrWhiteSpace(nouveauNom)) return;
-
-            var parent = Path.GetDirectoryName(ancien)!;
-            var nouveau = Path.Combine(parent, nouveauNom);
-
-            if (File.Exists(nouveau) || Directory.Exists(nouveau))
-            {
-                MessageBox.Show("Ce nom existe déjà.", "KeyCode", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            try
-            {
-                if (Directory.Exists(ancien)) Directory.Move(ancien, nouveau);
-                else File.Move(ancien, nouveau);
-                Actualiser();
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Impossible de renommer : " + ex.Message, "KeyCode",
-                    MessageBoxButton.OK, MessageBoxImage.Error);
-            }
+            File.WriteAllText(chemin, string.Empty);
+            Actualiser();
+            AppEvents.DemanderFichier(chemin);
         }
-
-        private void Supprimer_Click(object sender, RoutedEventArgs e)
+        catch (Exception ex)
         {
-            if (NoeudSelectionne?.Tag is not string chemin) return;
-
-            var reponse = MessageBox.Show(
-                "Supprimer définitivement « " + Path.GetFileName(chemin) + " » ?",
-                "Confirmer la suppression",
-                MessageBoxButton.YesNo, MessageBoxImage.Warning);
-            if (reponse != MessageBoxResult.Yes) return;
-
-            try
-            {
-                if (Directory.Exists(chemin)) Directory.Delete(chemin, true);
-                else File.Delete(chemin);
-                Actualiser();
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Impossible de supprimer : " + ex.Message, "KeyCode",
-                    MessageBoxButton.OK, MessageBoxImage.Error);
-            }
+            MessageBox.Show("Impossible de créer le fichier : " + ex.Message, "KeyCode",
+                MessageBoxButton.OK, MessageBoxImage.Error);
         }
+    }
 
-        // ---------------------------------------------------------------
-        // Petite boîte de saisie (WPF n'en fournit pas de base)
-        // ---------------------------------------------------------------
+    private void NouveauDossier_Click(object sender, RoutedEventArgs e)
+    {
+        var dossier = DossierCible();
+        if (dossier == null) return;
 
-        private string? DemanderNom(string titre, string question, string valeurInitiale)
+        var nom = DemanderNom("Nouveau dossier", "Nom du dossier :", "");
+        if (string.IsNullOrWhiteSpace(nom) || !NomValide(nom)) return;
+
+        var chemin = Path.Combine(dossier, nom);
+        if (File.Exists(chemin) || Directory.Exists(chemin))
         {
-            var champ = new TextBox { Text = valeurInitiale, Margin = new Thickness(0, 8, 0, 12) };
-            var ok = new Button { Content = "OK", Width = 70, IsDefault = true, Margin = new Thickness(0, 0, 8, 0) };
-            var annuler = new Button { Content = "Annuler", Width = 70, IsCancel = true };
-
-            var boutons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-            boutons.Children.Add(ok);
-            boutons.Children.Add(annuler);
-
-            var contenu = new StackPanel { Margin = new Thickness(14) };
-            contenu.Children.Add(new TextBlock { Text = question });
-            contenu.Children.Add(champ);
-            contenu.Children.Add(boutons);
-
-            var fenetre = new Window
-            {
-                Title = titre,
-                Content = contenu,
-                Width = 340,
-                SizeToContent = SizeToContent.Height,
-                ResizeMode = ResizeMode.NoResize,
-                WindowStartupLocation = WindowStartupLocation.CenterOwner,
-                Owner = Window.GetWindow(this)
-            };
-
-            ok.Click += (_, _) => fenetre.DialogResult = true;
-            fenetre.Loaded += (_, _) => { champ.Focus(); champ.SelectAll(); };
-
-            return fenetre.ShowDialog() == true ? champ.Text.Trim() : null;
+            MessageBox.Show("Ce nom existe déjà.", "KeyCode", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
         }
+
+        try
+        {
+            Directory.CreateDirectory(chemin);
+            Actualiser();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show("Impossible de créer le dossier : " + ex.Message, "KeyCode",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void Renommer_Click(object sender, RoutedEventArgs e)
+    {
+        if (NoeudSelectionne?.Tag is not string ancien) return;
+
+        var nouveauNom = DemanderNom("Renommer", "Nouveau nom :", Path.GetFileName(ancien));
+        if (string.IsNullOrWhiteSpace(nouveauNom) || !NomValide(nouveauNom)) return;
+
+        var parent = Path.GetDirectoryName(ancien)!;
+        var nouveau = Path.Combine(parent, nouveauNom);
+        if (string.Equals(ancien, nouveau, StringComparison.Ordinal)) return;
+
+        if (File.Exists(nouveau) || Directory.Exists(nouveau))
+        {
+            MessageBox.Show("Ce nom existe déjà.", "KeyCode", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            if (Directory.Exists(ancien))
+            {
+                Directory.Move(ancien, nouveau);
+            }
+            else
+            {
+                File.Move(ancien, nouveau);
+                AppEvents.SignalerFichierRenomme(ancien, nouveau);
+            }
+            Actualiser();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show("Impossible de renommer : " + ex.Message, "KeyCode",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void Supprimer_Click(object sender, RoutedEventArgs e)
+    {
+        if (NoeudSelectionne?.Tag is not string chemin) return;
+
+        var reponse = MessageBox.Show(
+            "Supprimer définitivement « " + Path.GetFileName(chemin) + " » ?",
+            "Confirmer la suppression",
+            MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (reponse != MessageBoxResult.Yes) return;
+
+        try
+        {
+            if (Directory.Exists(chemin))
+            {
+                Directory.Delete(chemin, true);
+            }
+            else
+            {
+                File.Delete(chemin);
+                AppEvents.SignalerFichierSupprime(chemin);
+            }
+            Actualiser();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show("Impossible de supprimer : " + ex.Message, "KeyCode",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private static bool NomValide(string nom)
+    {
+        if (nom.IndexOfAny(Path.GetInvalidFileNameChars()) < 0) return true;
+        MessageBox.Show("Le nom contient des caractères non autorisés.", "KeyCode",
+            MessageBoxButton.OK, MessageBoxImage.Warning);
+        return false;
+    }
+
+    private string? DemanderNom(string titre, string question, string valeurInitiale)
+    {
+        var champ = new TextBox
+        {
+            Text = valeurInitiale,
+            Margin = new Thickness(0, 8, 0, 14),
+            Style = (Style)Application.Current.FindResource("ChampVsCode")
+        };
+        var ok = new Button
+        {
+            Content = "OK",
+            Width = 80,
+            IsDefault = true,
+            Margin = new Thickness(0, 0, 8, 0),
+            Style = (Style)Application.Current.FindResource("BoutonPrimaireVsCode")
+        };
+        var annuler = new Button
+        {
+            Content = "Annuler",
+            Width = 80,
+            IsCancel = true,
+            Style = (Style)Application.Current.FindResource("BoutonSecondaireVsCode")
+        };
+
+        var boutons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        boutons.Children.Add(ok);
+        boutons.Children.Add(annuler);
+
+        var contenu = new StackPanel { Margin = new Thickness(16) };
+        contenu.Children.Add(new TextBlock
+        {
+            Text = question,
+            Foreground = ThemeManager.Pinceau("ThemeTexte")
+        });
+        contenu.Children.Add(champ);
+        contenu.Children.Add(boutons);
+
+        var fenetre = new Window
+        {
+            Title = titre,
+            Content = contenu,
+            Width = 360,
+            SizeToContent = SizeToContent.Height,
+            ResizeMode = ResizeMode.NoResize,
+            Background = ThemeManager.Pinceau("ThemeFondSecondaire"),
+            Foreground = ThemeManager.Pinceau("ThemeTexte"),
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Owner = Window.GetWindow(this)
+        };
+
+        ok.Click += (_, _) => fenetre.DialogResult = true;
+        fenetre.Loaded += (_, _) => { champ.Focus(); champ.SelectAll(); };
+
+        return fenetre.ShowDialog() == true ? champ.Text.Trim() : null;
     }
 }

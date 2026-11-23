@@ -480,3 +480,10 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Livraisons & artefacts installateur KeyCode
+publish/
+installer/dist/
+installer/Resources/KeyCodePayload.zip
+installer/bin/
+installer/obj/

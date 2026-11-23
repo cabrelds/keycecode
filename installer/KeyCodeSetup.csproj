@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <ApplicationIcon>..\KeyCode\Assets\keycode.ico</ApplicationIcon>
+    <AssemblyName>KeyCodeSetup</AssemblyName>
+    <AssemblyTitle>Installateur KeyCode IDE</AssemblyTitle>
+    <Product>KeyCode Setup</Product>
+    <Version>2.0.0</Version>
+    <Company>Équipe KeyCode</Company>
+    <Description>Assistant d'installation Windows pour KeyCode IDE</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="..\KeyCode\Assets\keycode.ico" Link="Assets\keycode.ico" />
+    <EmbeddedResource Include="Resources\KeyCodePayload.zip"
+                      LogicalName="KeyCodeSetup.Payload.zip"
+                      Condition="Exists('Resources\KeyCodePayload.zip')" />
+  </ItemGroup>
+
+</Project>

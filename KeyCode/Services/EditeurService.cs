@@ -16,17 +16,14 @@ using ICSharpCode.AvalonEdit.Indentation.CSharp;
 namespace KeyCode.Services;
 
 /// <summary>
-/// Configuration d'un éditeur AvalonEdit : coloration, thème, police, numéros de ligne, pliage du code,
-/// auto-indentation, fermeture automatique des parenthèses et guillemets, auto-complétion, zoom Ctrl+molette.
-/// Chaque onglet appelle Configurer(editeur, chemin) : l'appel peut être répété sur le même éditeur
-/// (après "Enregistrer sous" par exemple) sans rien dupliquer.
-/// Propriétaire : nyangono (module repris par cabrelds).
+/// Configuration d'un éditeur AvalonEdit : coloration, thème, police, numéros de ligne, pliage,
+/// auto-indentation, fermeture auto des parenthèses/guillemets, auto-complétion, zoom Ctrl+molette,
+/// soulignage des diagnostics en direct et raccourcis d'édition VS Code (Ctrl+/, Alt+Flèche, Ctrl+Maj+K).
 /// </summary>
 public static class EditeurService
 {
     private enum TypePliage { Aucun, Accolades, Indentation, Xml }
 
-    // Ce que le service mémorise pour chaque éditeur
     private sealed class EtatEditeur
     {
         public string? Chemin { get; set; }
@@ -35,7 +32,10 @@ public static class EditeurService
         public TextDocument? DocumentPliage { get; set; }
         public TypePliage TypePliage { get; set; }
         public DispatcherTimer? MinuteurPliage { get; set; }
+        public DispatcherTimer? MinuteurDiagnostic { get; set; }
+        public CancellationTokenSource? JetonDiagnostic { get; set; }
         public CompletionWindow? Completion { get; set; }
+        public MarqueurService? Marqueurs { get; set; }
     }
 
     private static readonly ConditionalWeakTable<TextEditor, EtatEditeur> _etats = new();
@@ -46,11 +46,11 @@ public static class EditeurService
     private static readonly HashSet<string> _extensionsAccolades = new()
     {
         ".cs", ".java", ".c", ".h", ".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx",
-        ".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx", ".php", ".go", ".rs", ".json", ".css"
+        ".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx", ".php", ".go", ".rs", ".json", ".css", ".scss"
     };
     private static readonly HashSet<string> _extensionsXml = new()
     {
-        ".xml", ".xaml", ".csproj", ".svg", ".config", ".xsd", ".props", ".targets", ".resx"
+        ".xml", ".xaml", ".csproj", ".svg", ".config", ".xsd", ".props", ".targets", ".resx", ".html", ".htm"
     };
 
     private const double TaillePoliceMin = 8;
@@ -58,25 +58,23 @@ public static class EditeurService
 
     static EditeurService()
     {
-        // Un changement de thème réapplique couleurs et coloration à tous les éditeurs ouverts
         AppEvents.ThemeChange += _ => ReconfigurerTous();
+        AppEvents.DiagnosticsChanges += MettreAJourMarqueursTous;
     }
-
-    // ------------------------------------------------------------------
-    // API publique (contrat)
-    // ------------------------------------------------------------------
 
     /// <summary>Configure un éditeur. chemin vaut null pour un onglet pas encore enregistré.</summary>
     public static void Configurer(TextEditor editeur, string? chemin)
     {
         var etat = _etats.GetValue(editeur, _ => new EtatEditeur());
         etat.Chemin = chemin;
+        etat.Marqueurs ??= new MarqueurService(editeur);
 
         editeur.ShowLineNumbers = true;
         editeur.Options.HighlightCurrentLine = true;
         editeur.Options.IndentationSize = 4;
-        // Go est indenté avec de vraies tabulations ; partout ailleurs, la touche Tab insère des espaces
         editeur.Options.ConvertTabsToSpaces = Extension(chemin) != ".go";
+        editeur.Options.EnableHyperlinks = true;
+        editeur.Options.EnableEmailHyperlinks = false;
 
         AppliquerApparence(editeur, etat);
         ConfigurerIndentation(editeur, etat);
@@ -88,9 +86,11 @@ public static class EditeurService
             etat.Branche = true;
             lock (_editeurs) _editeurs.Add(new WeakReference<TextEditor>(editeur));
         }
+
+        PlanifierDiagnostic(editeur, etat, immediat: true);
     }
 
-    /// <summary>Réapplique thème, police et coloration à tous les éditeurs ouverts (appelée sur ThemeChange et après un zoom).</summary>
+    /// <summary>Réapplique thème, police et coloration à tous les éditeurs ouverts.</summary>
     public static void ReconfigurerTous()
     {
         foreach (var editeur in EditeursVivants())
@@ -100,13 +100,54 @@ public static class EditeurService
             if (editeur.Dispatcher.CheckAccess())
                 AppliquerApparence(editeur, etat);
             else
-                editeur.Dispatcher.Invoke(() => AppliquerApparence(editeur, etat));
+                editeur.Dispatcher.InvokeAsync(() => AppliquerApparence(editeur, etat));
         }
     }
 
-    // ------------------------------------------------------------------
-    // Apparence : police, couleurs, coloration
-    // ------------------------------------------------------------------
+    private static void MettreAJourMarqueursTous()
+    {
+        foreach (var editeur in EditeursVivants())
+        {
+            if (!_etats.TryGetValue(editeur, out var etat) || etat.Marqueurs == null) continue;
+            var action = () => AppliquerMarqueurs(editeur, etat);
+            if (editeur.Dispatcher.CheckAccess()) action();
+            else editeur.Dispatcher.InvokeAsync(action);
+        }
+    }
+
+    private static void AppliquerMarqueurs(TextEditor editeur, EtatEditeur etat)
+    {
+        if (etat.Marqueurs == null || editeur.Document == null) return;
+        if (string.IsNullOrWhiteSpace(etat.Chemin))
+        {
+            etat.Marqueurs.Effacer();
+            return;
+        }
+
+        var diagnostics = DiagnosticService.ObtenirPourFichier(etat.Chemin);
+        if (diagnostics.Count == 0)
+        {
+            etat.Marqueurs.Effacer();
+            return;
+        }
+
+        var marqueurs = new List<MarqueurDiagnostic>();
+        var totalLignes = editeur.Document.LineCount;
+        foreach (var diag in diagnostics)
+        {
+            if (totalLignes <= 0) break;
+            var numLigne = Math.Clamp(diag.Ligne, 1, totalLignes);
+            var docLigne = editeur.Document.GetLineByNumber(numLigne);
+            var colOffset = Math.Clamp(diag.Colonne - 1, 0, Math.Max(0, docLigne.Length - 1));
+            var debut = docLigne.Offset + colOffset;
+            var longueurMax = Math.Max(1, docLigne.EndOffset - debut);
+            var longueur = Math.Clamp(diag.Longueur, 1, longueurMax);
+
+            marqueurs.Add(new MarqueurDiagnostic(debut, longueur, diag.Severite, diag.Message, diag.Source));
+        }
+
+        etat.Marqueurs.DefinirMarqueurs(marqueurs);
+    }
 
     private static void AppliquerApparence(TextEditor editeur, EtatEditeur etat)
     {
@@ -118,7 +159,7 @@ public static class EditeurService
         editeur.LineNumbersForeground = ThemeManager.Pinceau("ThemeNumerosLigne");
         editeur.TextArea.SelectionBrush = ThemeManager.Pinceau("ThemeSelection");
         editeur.TextArea.TextView.CurrentLineBackground = ThemeManager.Pinceau("ThemeLigneCourante");
-        editeur.TextArea.TextView.CurrentLineBorder = new Pen(ThemeManager.Pinceau("ThemeLigneCourante"), 1);
+        editeur.TextArea.TextView.CurrentLineBorder = new Pen(ThemeManager.Pinceau("ThemeBordure"), 0.8);
 
         if (etat.Chemin != null)
             ColorationService.Appliquer(editeur, etat.Chemin);
@@ -128,10 +169,6 @@ public static class EditeurService
 
     private static string Extension(string? chemin) =>
         string.IsNullOrEmpty(chemin) ? "" : Path.GetExtension(chemin).ToLowerInvariant();
-
-    // ------------------------------------------------------------------
-    // Auto-indentation
-    // ------------------------------------------------------------------
 
     private static void ConfigurerIndentation(TextEditor editeur, EtatEditeur etat)
     {
@@ -145,15 +182,11 @@ public static class EditeurService
             editeur.TextArea.IndentationStrategy = new DefaultIndentationStrategy();
     }
 
-    // Python : on reprend l'indentation de la ligne précédente, et on ajoute un niveau si elle se termine par ":"
     private sealed class IndentationPython : IIndentationStrategy
     {
         private readonly TextEditorOptions _options;
 
-        public IndentationPython(TextEditorOptions options)
-        {
-            _options = options;
-        }
+        public IndentationPython(TextEditorOptions options) => _options = options;
 
         public void IndentLine(TextDocument document, DocumentLine line)
         {
@@ -176,10 +209,6 @@ public static class EditeurService
         }
     }
 
-    // ------------------------------------------------------------------
-    // Pliage du code
-    // ------------------------------------------------------------------
-
     private static void ConfigurerPliage(TextEditor editeur, EtatEditeur etat)
     {
         var extension = Extension(etat.Chemin);
@@ -194,7 +223,6 @@ public static class EditeurService
             return;
         }
 
-        // Le gestionnaire de pliage est lié à un document : si le document change, on le réinstalle
         if (etat.Pliage == null || !ReferenceEquals(etat.DocumentPliage, editeur.Document))
         {
             SupprimerPliage(etat);
@@ -210,7 +238,7 @@ public static class EditeurService
     {
         if (etat.Pliage == null) return;
         try { FoldingManager.Uninstall(etat.Pliage); }
-        catch (Exception) { /* déjà désinstallé : rien à faire */ }
+        catch (Exception) { }
         etat.Pliage = null;
         etat.DocumentPliage = null;
     }
@@ -218,7 +246,6 @@ public static class EditeurService
     private static void MettreAJourPliage(TextEditor editeur, EtatEditeur etat)
     {
         if (etat.Pliage == null) return;
-
         try
         {
             switch (etat.TypePliage)
@@ -234,32 +261,62 @@ public static class EditeurService
                     break;
             }
         }
-        catch (Exception)
-        {
-            // Un calcul de pliage raté ne doit jamais gêner la frappe
-        }
+        catch (Exception) { }
     }
 
-    // Relance le calcul 700 ms après la dernière frappe (pas à chaque touche)
     private static void PlanifierPliage(TextEditor editeur, EtatEditeur etat)
     {
         if (etat.Pliage == null) return;
-
         if (etat.MinuteurPliage == null)
         {
-            etat.MinuteurPliage = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(700) };
+            etat.MinuteurPliage = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(600) };
             etat.MinuteurPliage.Tick += (_, _) =>
             {
                 etat.MinuteurPliage!.Stop();
                 MettreAJourPliage(editeur, etat);
             };
         }
-
         etat.MinuteurPliage.Stop();
         etat.MinuteurPliage.Start();
     }
 
-    // Langages à accolades : un pliage par paire { } sur plusieurs lignes (on ignore commentaires et chaînes)
+    private static void PlanifierDiagnostic(TextEditor editeur, EtatEditeur etat, bool immediat = false)
+    {
+        if (etat.MinuteurDiagnostic == null)
+        {
+            etat.MinuteurDiagnostic = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(550) };
+            etat.MinuteurDiagnostic.Tick += async (_, _) =>
+            {
+                etat.MinuteurDiagnostic!.Stop();
+                await LancerDiagnosticAsync(editeur, etat);
+            };
+        }
+
+        etat.MinuteurDiagnostic.Stop();
+        if (immediat)
+            _ = LancerDiagnosticAsync(editeur, etat);
+        else
+            etat.MinuteurDiagnostic.Start();
+    }
+
+    private static async Task LancerDiagnosticAsync(TextEditor editeur, EtatEditeur etat)
+    {
+        etat.JetonDiagnostic?.Cancel();
+        etat.JetonDiagnostic?.Dispose();
+        etat.JetonDiagnostic = new CancellationTokenSource();
+        var jeton = etat.JetonDiagnostic.Token;
+
+        var texte = editeur.Document?.Text ?? "";
+        var chemin = etat.Chemin;
+
+        try
+        {
+            await DiagnosticService.AnalyserDocumentAsync(chemin, texte, jeton);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception) { }
+    }
+
     private static List<NewFolding> CalculerPliagesAccolades(TextDocument document)
     {
         var resultat = new List<NewFolding>();
@@ -270,27 +327,23 @@ public static class EditeurService
         while (i < texte.Length)
         {
             var c = texte[i];
-
             if (c == '/' && i + 1 < texte.Length && texte[i + 1] == '/')
             {
                 while (i < texte.Length && texte[i] != '\n') i++;
                 continue;
             }
-
             if (c == '/' && i + 1 < texte.Length && texte[i + 1] == '*')
             {
                 var fin = texte.IndexOf("*/", i + 2, StringComparison.Ordinal);
                 i = fin < 0 ? texte.Length : fin + 2;
                 continue;
             }
-
             if (c == '`')
             {
                 var fin = texte.IndexOf('`', i + 1);
                 i = fin < 0 ? texte.Length : fin + 1;
                 continue;
             }
-
             if (c == '"' || c == '\'')
             {
                 var j = i + 1;
@@ -302,18 +355,13 @@ public static class EditeurService
                 i = j + 1;
                 continue;
             }
-
-            if (c == '{')
-            {
-                pile.Push(i);
-            }
+            if (c == '{') pile.Push(i);
             else if (c == '}' && pile.Count > 0)
             {
                 var debut = pile.Pop();
                 if (document.GetLineByOffset(debut).LineNumber != document.GetLineByOffset(i).LineNumber)
                     resultat.Add(new NewFolding(debut, i + 1) { Name = "{...}" });
             }
-
             i++;
         }
 
@@ -321,10 +369,8 @@ public static class EditeurService
         return resultat;
     }
 
-    // Python : un bloc = les lignes plus indentées que la ligne d'en-tête (def, class, if, for...)
     private static List<NewFolding> CalculerPliagesIndentation(TextDocument document)
     {
-        // Lignes non vides : début, fin et niveau d'indentation (une tabulation compte pour 4)
         var lignes = new List<(int Debut, int Fin, int Indentation)>();
         foreach (var ligne in document.Lines)
         {
@@ -345,20 +391,17 @@ public static class EditeurService
 
         for (var i = 0; i < lignes.Count; i++)
         {
-            // Cette ligne ferme tous les blocs ouverts qui étaient au même niveau ou plus profonds
             while (pile.Count > 0 && pile.Peek().Indentation >= lignes[i].Indentation)
             {
                 var ouvert = pile.Pop();
                 var fin = lignes[i - 1].Fin;
                 if (fin > ouvert.Debut) resultat.Add(new NewFolding(ouvert.Debut, fin) { Name = "..." });
             }
-
-            // Si la ligne suivante est plus indentée, cette ligne ouvre un bloc
             if (i + 1 < lignes.Count && lignes[i + 1].Indentation > lignes[i].Indentation)
                 pile.Push((lignes[i].Indentation, lignes[i].Fin));
         }
 
-        while (pile.Count > 0)
+        while (pile.Count > 0 && lignes.Count > 0)
         {
             var ouvert = pile.Pop();
             var fin = lignes[^1].Fin;
@@ -369,29 +412,49 @@ public static class EditeurService
         return resultat;
     }
 
-    // ------------------------------------------------------------------
-    // Événements de l'éditeur (branchés une seule fois par éditeur)
-    // ------------------------------------------------------------------
-
     private static void Brancher(TextEditor editeur, EtatEditeur etat)
     {
-        editeur.TextChanged += (_, _) => PlanifierPliage(editeur, etat);
+        editeur.TextChanged += (_, _) =>
+        {
+            PlanifierPliage(editeur, etat);
+            PlanifierDiagnostic(editeur, etat);
+        };
         editeur.DocumentChanged += (_, _) => ConfigurerPliage(editeur, etat);
 
         editeur.TextArea.TextEntering += (_, e) => SurTextEntering(editeur, etat, e);
         editeur.TextArea.TextEntered += (_, e) => SurTextEntered(editeur, etat, e);
+        editeur.TextArea.LostKeyboardFocus += (_, _) =>
+        {
+            if (etat.Completion != null && !etat.Completion.IsKeyboardFocusWithin)
+                etat.Completion.Close();
+        };
 
-        // Ctrl+Espace : forcer l'auto-complétion
+        // Raccourcis éditeur VS Code : Ctrl+Espace, Ctrl+/, Ctrl+Maj+K, Alt+Haut/Bas
         editeur.PreviewKeyDown += (_, e) =>
         {
-            if (e.Key == Key.Space && Keyboard.Modifiers == ModifierKeys.Control)
+            var mod = Keyboard.Modifiers;
+            if (e.Key == Key.Space && mod == ModifierKeys.Control)
             {
                 e.Handled = true;
                 ProposerCompletion(editeur, etat, forcer: true);
             }
+            else if ((e.Key == Key.OemQuestion || e.Key == Key.Divide) && mod == ModifierKeys.Control)
+            {
+                e.Handled = true;
+                BasculerCommentaireLigne(editeur, etat.Chemin);
+            }
+            else if (e.Key == Key.K && mod == (ModifierKeys.Control | ModifierKeys.Shift))
+            {
+                e.Handled = true;
+                SupprimerLigneCourante(editeur);
+            }
+            else if ((e.SystemKey == Key.Up || e.SystemKey == Key.Down) && mod == ModifierKeys.Alt)
+            {
+                e.Handled = true;
+                DeplacerLigne(editeur, e.SystemKey == Key.Up ? -1 : 1);
+            }
         };
 
-        // Zoom Ctrl+molette (handledEventsToo : on garde la main même si AvalonEdit a déjà traité la molette)
         editeur.AddHandler(UIElement.PreviewMouseWheelEvent, new MouseWheelEventHandler((_, e) =>
         {
             if (Keyboard.Modifiers != ModifierKeys.Control) return;
@@ -400,7 +463,69 @@ public static class EditeurService
         }), true);
     }
 
-    // La taille de police vit dans SettingsService.TaillePolice (partagée avec le menu Affichage > Zoom)
+    private static void BasculerCommentaireLigne(TextEditor editeur, string? chemin)
+    {
+        var ext = Extension(chemin);
+        var prefixe = ext is ".py" or ".pyw" or ".ps1" or ".yml" or ".yaml" ? "# " : "// ";
+        var doc = editeur.Document;
+        var ligneDebut = doc.GetLineByOffset(editeur.SelectionStart).LineNumber;
+        var ligneFin = doc.GetLineByOffset(editeur.SelectionStart + editeur.SelectionLength).LineNumber;
+
+        using (doc.RunUpdate())
+        {
+            for (var n = ligneDebut; n <= ligneFin; n++)
+            {
+                var l = doc.GetLineByNumber(n);
+                var texte = doc.GetText(l);
+                var trim = texte.TrimStart();
+                var decalage = texte.Length - trim.Length;
+                if (trim.StartsWith(prefixe.TrimEnd(), StringComparison.Ordinal))
+                {
+                    var len = trim.StartsWith(prefixe, StringComparison.Ordinal) ? prefixe.Length : prefixe.TrimEnd().Length;
+                    doc.Remove(l.Offset + decalage, len);
+                }
+                else
+                {
+                    doc.Insert(l.Offset + decalage, prefixe);
+                }
+            }
+        }
+    }
+
+    private static void SupprimerLigneCourante(TextEditor editeur)
+    {
+        var doc = editeur.Document;
+        var l = doc.GetLineByOffset(editeur.CaretOffset);
+        doc.Remove(l.Offset, l.TotalLength);
+    }
+
+    private static void DeplacerLigne(TextEditor editeur, int direction)
+    {
+        var doc = editeur.Document;
+        var l = doc.GetLineByOffset(editeur.CaretOffset);
+        var cibleNum = l.LineNumber + direction;
+        if (cibleNum < 1 || cibleNum > doc.LineCount) return;
+
+        var cible = doc.GetLineByNumber(cibleNum);
+        var txtCourant = doc.GetText(l);
+        var txtCible = doc.GetText(cible);
+
+        using (doc.RunUpdate())
+        {
+            if (direction < 0)
+            {
+                doc.Replace(l.Offset, l.Length, txtCible);
+                doc.Replace(cible.Offset, cible.Length, txtCourant);
+            }
+            else
+            {
+                doc.Replace(cible.Offset, cible.Length, txtCourant);
+                doc.Replace(l.Offset, l.Length, txtCible);
+            }
+        }
+        editeur.CaretOffset = doc.GetLineByNumber(cibleNum).Offset;
+    }
+
     private static void ChangerTaille(double taille)
     {
         SettingsService.TaillePolice = Math.Clamp(taille, TaillePoliceMin, TaillePoliceMax);
@@ -419,23 +544,16 @@ public static class EditeurService
         return vivants;
     }
 
-    // ------------------------------------------------------------------
-    // Fermeture automatique des parenthèses et guillemets
-    // ------------------------------------------------------------------
-
     private static bool EstCaractereMot(char c) => char.IsLetterOrDigit(c) || c == '_';
 
-    // Avant l'insertion du caractère tapé
     private static void SurTextEntering(TextEditor editeur, EtatEditeur etat, TextCompositionEventArgs e)
     {
         if (e.Text.Length != 1) return;
         var c = e.Text[0];
 
-        // Un caractère qui ne fait pas partie d'un mot referme la liste de complétion
         if (etat.Completion != null && !EstCaractereMot(c))
             etat.Completion.Close();
 
-        // Si le caractère fermant est déjà juste après le curseur, on le "saute" au lieu de le doubler
         if ((c is ')' or ']' or '}' or '"' or '\'') && editeur.SelectionLength == 0)
         {
             var decalage = editeur.CaretOffset;
@@ -447,7 +565,6 @@ public static class EditeurService
         }
     }
 
-    // Après l'insertion du caractère tapé
     private static void SurTextEntered(TextEditor editeur, EtatEditeur etat, TextCompositionEventArgs e)
     {
         if (e.Text.Length != 1) return;
@@ -469,7 +586,7 @@ public static class EditeurService
             {
                 var position = editeur.CaretOffset;
                 editeur.Document.Insert(position, fermante.ToString());
-                editeur.CaretOffset = position; // le curseur reste entre les deux caractères
+                editeur.CaretOffset = position;
             }
             return;
         }
@@ -478,7 +595,6 @@ public static class EditeurService
             ProposerCompletion(editeur, etat, forcer: false);
     }
 
-    // Faut-il ajouter automatiquement le caractère fermant ? (le curseur est déjà après le caractère tapé)
     private static bool FermetureAutorisee(TextEditor editeur, EtatEditeur etat, char c)
     {
         if (_extensionsTexte.Contains(Extension(etat.Chemin))) return false;
@@ -492,26 +608,17 @@ public static class EditeurService
         if (c is '"' or '\'')
         {
             if (EstCaractereMot(apres)) return false;
-            if (c == '\'' && EstCaractereMot(avant)) return false;      // apostrophe dans un mot (it's, l'été...)
-            if (avant == c && avantAvant == c) return false;            // troisième guillemet d'un """ Python
+            if (c == '\'' && EstCaractereMot(avant)) return false;
+            if (avant == c && avantAvant == c) return false;
             return true;
         }
 
-        // Parenthèses, crochets, accolades : seulement avant un espace, une fin de ligne ou un caractère fermant
         return apres == '\0' || char.IsWhiteSpace(apres) || apres is ')' or ']' or '}' or ',' or ';' or ':';
     }
 
-    // ------------------------------------------------------------------
-    // Auto-complétion simple : mots-clés du langage + mots déjà présents dans le fichier
-    // ------------------------------------------------------------------
-
     private sealed class DonneeCompletion : ICompletionData
     {
-        public DonneeCompletion(string texte)
-        {
-            Text = texte;
-        }
-
+        public DonneeCompletion(string texte) => Text = texte;
         public ImageSource Image => null!;
         public string Text { get; }
         public object Content => Text;
@@ -535,8 +642,8 @@ public static class EditeurService
         while (debut > 0 && EstCaractereMot(document.GetCharAt(debut - 1))) debut--;
 
         var longueur = position - debut;
-        if (!forcer && longueur < 2) return;                                   // pas avant 2 lettres
-        if (longueur > 0 && char.IsDigit(document.GetCharAt(debut))) return;  // pas dans un nombre
+        if (!forcer && longueur < 2) return;
+        if (longueur > 0 && char.IsDigit(document.GetCharAt(debut))) return;
 
         var prefixe = document.GetText(debut, longueur);
         var candidats = ChercherCandidats(editeur, etat, prefixe);
@@ -571,7 +678,6 @@ public static class EditeurService
         foreach (var motCle in ColorationService.ObtenirMotsCles(etat.Chemin))
             mots.Add(motCle);
 
-        // Mots du fichier (on évite de scanner un fichier énorme à chaque frappe)
         if (editeur.Document.TextLength <= 300_000)
             foreach (Match correspondance in _regexMot.Matches(editeur.Document.Text))
                 mots.Add(correspondance.Value);

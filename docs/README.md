@@ -197,3 +197,11 @@ Une page par membre de l'équipe : à quoi sert le module, ses méthodes publiqu
 | Onglets et restauration de session | DeboraQueen237 | [onglets.md](onglets.md) |
 | Recherche, terminal, exécution | morelbrad27-lab | [recherche-terminal.md](recherche-terminal.md) |
 | Thèmes, paramètres, services de l'éditeur | nyangono | [themes-parametres.md](themes-parametres.md) |
+
+---
+
+## Documentation complémentaire (KeyCode IDE 2.0)
+
+- **Guide complet d'utilisation, d'installation et de tests** : [guide-utilisation-tests.md](guide-utilisation-tests.md)
+- **Suivi structuré des issues et corrections** : [issues-suivi.md](issues-suivi.md)
+- **Installateur Windows** : projet C# WPF dans `installer/` et scripts `installer/construire-setup.ps1` / `installer/KeyCode.iss`
