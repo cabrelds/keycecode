@@ -53,8 +53,8 @@ dotnet run
 
 1. Obtenez une clé API gratuite ou Pro sur **Google AI Studio** (`https://aistudio.google.com/apikey`).
 2. Ouvrez le panneau **Gemini AI** (`Ctrl+Alt+I` ou bouton `✦ Gemini` dans la barre de statut), puis cliquez sur **⚙ Clé API** (ou passez par **Fichier > Paramètres...**).
-3. Collez votre clé API, choisissez le modèle (`gemini-2.5-flash`, `gemini-2.5-pro` ou `gemini-2.0-flash`) et cliquez sur **Enregistrer la configuration**.
-4. Utilisez les cases à cocher **Fichier actif**, **Sélection**, **Erreurs** et les boutons d'action rapide (**Expliquer**, **Corriger erreurs**, **Optimiser**, **Commenter**), ou posez une question libre.
+3. Collez votre clé API, choisissez le modèle (`gemini-3.8-flash`, `gemini-flash-latest`, `gemini-3.7-flash` ou `gemini-3.8-pro` — ou cliquez sur **↻** pour charger la liste exacte des modèles de votre compte) et cliquez sur **Enregistrer la configuration**. KeyCode bascule aussi automatiquement vers un modèle actif si un ancien modèle est déprécié.
+4. Utilisez les cases à cocher **Fichier actif**, **Sélection**, **Erreurs** (qui transmet aussi la dernière erreur du terminal) et les boutons d'action rapide (**Expliquer**, **Corriger erreurs**, **Optimiser**, **Commenter**), ou posez une question libre.
 5. Chaque bloc de code proposé par Gemini dispose de boutons **Copier**, **Insérer au curseur** et **Remplacer la sélection**.
 
 ---
@@ -82,7 +82,7 @@ dotnet run
 ## 5. Langages, coloration et exécution pris en charge
 
 - **Coloration syntaxique (Sombre+ et Clair+)** : C#, Python, JavaScript, TypeScript, C, C++, Java, PHP, Go, Rust, HTML, CSS, XML/XAML, JSON, SQL, Markdown, YAML, PowerShell, Bash/Shell, Batch Windows.
-- **Exécution console (`F5`)** : Python (UTF-8), Node.js (`.js`/`.mjs`/`.cjs`), TypeScript (`node --experimental-strip-types`), C# (projet `.csproj` ou script `.cs` autonome .NET 10), PHP, Batch Windows (`.bat`/`.cmd`), PowerShell (`.ps1`), C (`gcc`), C++ (`g++`), Rust (`rustc`), Java (`java`), Go (`go run`).
+- **Exécution console (`F5`)** : Python (UTF-8), Node.js (`.js`/`.mjs`/`.cjs`), TypeScript (`node --experimental-strip-types`), C# (projets SDK `.NET 8/9/10`, projets Visual Studio `.NET Framework 4.x` via MSBuild ou scripts `.cs` autonomes), PHP, Batch Windows (`.bat`/`.cmd`), PowerShell (`.ps1`), C (`gcc`), C++ (`g++`), Rust (`rustc`), Java (`java`), Go (`go run`). Saisie clavier interactive (`Console.ReadLine()`, `input()`, `scanf()`) gérée en direct sous le terminal.
 - **Exécution graphique & Web** :
   - Programmes graphiques (ex. Python `tkinter`, applications desktop C# WPF/WinForms) lancés directement avec gestion de la sortie et arrêt via **Arrêter**.
   - Pages Web (`.html`, `.htm`, `.svg`) ouvertes dans le navigateur système par défaut.

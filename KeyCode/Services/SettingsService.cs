@@ -21,7 +21,7 @@ public static class SettingsService
     public static List<string> OngletsOuverts { get; set; } = new();
     public static int OngletActifIndex { get; set; }
     public static string CleApiGemini { get; set; } = "";
-    public static string ModeleGemini { get; set; } = "gemini-2.5-flash";
+    public static string ModeleGemini { get; set; } = "gemini-3.8-flash";
     public static double LargeurPanneauGauche { get; set; } = 260;
     public static double HauteurPanneauBas { get; set; } = 210;
     public static bool PanneauIAVisible { get; set; }
@@ -42,7 +42,7 @@ public static class SettingsService
         public List<string>? OngletsOuverts { get; set; } = new();
         public int OngletActifIndex { get; set; }
         public string? CleApiGemini { get; set; } = "";
-        public string? ModeleGemini { get; set; } = "gemini-2.5-flash";
+        public string? ModeleGemini { get; set; } = "gemini-3.8-flash";
         public double LargeurPanneauGauche { get; set; } = 260;
         public double HauteurPanneauBas { get; set; } = 210;
         public bool PanneauIAVisible { get; set; }
@@ -77,7 +77,7 @@ public static class SettingsService
 
             OngletActifIndex = Math.Max(0, donnees.OngletActifIndex);
             CleApiGemini = donnees.CleApiGemini ?? "";
-            ModeleGemini = string.IsNullOrWhiteSpace(donnees.ModeleGemini) ? "gemini-2.5-flash" : donnees.ModeleGemini;
+            ModeleGemini = MigrerModeleObsolete(donnees.ModeleGemini);
             LargeurPanneauGauche = donnees.LargeurPanneauGauche is >= 140 and <= 600 ? donnees.LargeurPanneauGauche : 260;
             HauteurPanneauBas = donnees.HauteurPanneauBas is >= 100 and <= 500 ? donnees.HauteurPanneauBas : 210;
             PanneauIAVisible = donnees.PanneauIAVisible;
@@ -104,7 +104,7 @@ public static class SettingsService
                 OngletsOuverts = OngletsOuverts ?? new List<string>(),
                 OngletActifIndex = OngletActifIndex,
                 CleApiGemini = CleApiGemini ?? "",
-                ModeleGemini = ModeleGemini ?? "gemini-2.5-flash",
+                ModeleGemini = ModeleGemini ?? "gemini-3.8-flash",
                 LargeurPanneauGauche = LargeurPanneauGauche,
                 HauteurPanneauBas = HauteurPanneauBas,
                 PanneauIAVisible = PanneauIAVisible,
@@ -130,10 +130,21 @@ public static class SettingsService
         OngletsOuverts = new List<string>();
         OngletActifIndex = 0;
         CleApiGemini = "";
-        ModeleGemini = "gemini-2.5-flash";
+        ModeleGemini = "gemini-3.8-flash";
         LargeurPanneauGauche = 260;
         HauteurPanneauBas = 210;
         PanneauIAVisible = false;
         LargeurPanneauIA = 340;
+    }
+
+    private static string MigrerModeleObsolete(string? modele)
+    {
+        if (string.IsNullOrWhiteSpace(modele)) return "gemini-3.8-flash";
+        var m = modele.Trim().ToLowerInvariant();
+        if (m is "gemini-2.0-flash" or "gemini-2.0-flash-exp" or "gemini-2.5-flash")
+            return "gemini-3.8-flash";
+        if (m is "gemini-2.5-pro")
+            return "gemini-3.8-pro";
+        return modele.Trim();
     }
 }
