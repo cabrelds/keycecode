@@ -412,9 +412,13 @@ public partial class MainWindow : Window
 
         panel.Children.Add(new TextBlock { Text = "Modèle Gemini :", FontWeight = FontWeights.SemiBold, Foreground = ThemeManager.Pinceau("ThemeTexte"), Margin = new Thickness(0, 0, 0, 4) });
         var comboModele = new ComboBox { Margin = new Thickness(0, 0, 0, 16) };
-        comboModele.Items.Add("gemini-2.5-flash");
-        comboModele.Items.Add("gemini-2.5-pro");
-        comboModele.Items.Add("gemini-2.0-flash");
+        foreach (var m in GeminiService.ModelesParDefaut)
+            comboModele.Items.Add(m);
+        if (!string.IsNullOrWhiteSpace(SettingsService.ModeleGemini) &&
+            !GeminiService.ModelesParDefaut.Contains(SettingsService.ModeleGemini, StringComparer.OrdinalIgnoreCase))
+        {
+            comboModele.Items.Insert(0, SettingsService.ModeleGemini);
+        }
         comboModele.SelectedItem = SettingsService.ModeleGemini;
         if (comboModele.SelectedIndex < 0) comboModele.SelectedIndex = 0;
         panel.Children.Add(comboModele);

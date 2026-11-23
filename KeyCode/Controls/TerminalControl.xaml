@@ -130,6 +130,8 @@
 
             <RichTextBox x:Name="Sortie" Grid.Row="0" IsReadOnly="True"
                          IsDocumentEnabled="True"
+                         PreviewTextInput="Sortie_PreviewTextInput"
+                         PreviewKeyDown="Sortie_PreviewKeyDown"
                          Background="{DynamicResource ThemeTerminalFond}"
                          Foreground="{DynamicResource ThemeTerminalTexte}"
                          BorderThickness="0"
@@ -154,13 +156,35 @@
                                Foreground="{DynamicResource ThemeSucces}"
                                FontFamily="Consolas" FontSize="13" FontWeight="Bold"
                                Margin="0,0,8,0" VerticalAlignment="Center"/>
-                    <TextBox x:Name="Saisie" Background="Transparent"
-                             Foreground="{DynamicResource ThemeTexte}"
-                             CaretBrush="{DynamicResource ThemeTexte}"
-                             BorderThickness="0"
-                             FontFamily="Consolas" FontSize="13"
-                             ToolTip="Saisir une réponse pour input() / scanf() et appuyer sur Entrée"
-                             PreviewKeyDown="Saisie_PreviewKeyDown"/>
+                    <Button Content="Envoyer" DockPanel.Dock="Right"
+                            Margin="6,0,0,0" Padding="8,2" FontSize="11"
+                            Style="{StaticResource BoutonBarreBas}"
+                            Click="EnvoyerSaisie_Click"/>
+                    <Grid>
+                        <TextBlock Text="Saisie interactive du programme (Entrée pour valider, Ctrl+C pour arrêter)..."
+                                   Foreground="{DynamicResource ThemeTexteSecondaire}"
+                                   FontFamily="Consolas" FontSize="12"
+                                   VerticalAlignment="Center" IsHitTestVisible="False">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Text, ElementName=Saisie}" Value="">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <TextBox x:Name="Saisie" Background="Transparent"
+                                 Foreground="{DynamicResource ThemeTexte}"
+                                 CaretBrush="{DynamicResource ThemeTexte}"
+                                 BorderThickness="0"
+                                 FontFamily="Consolas" FontSize="13"
+                                 VerticalAlignment="Center"
+                                 ToolTip="Saisir une réponse pour Console.ReadLine() / input() / scanf() et appuyer sur Entrée"
+                                 PreviewKeyDown="Saisie_PreviewKeyDown"/>
+                    </Grid>
                 </DockPanel>
             </Border>
         </Grid>

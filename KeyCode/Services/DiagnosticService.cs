@@ -26,6 +26,8 @@ public static class DiagnosticService
     private static readonly Dictionary<string, List<DiagnosticItem>> _parFichier = new(StringComparer.OrdinalIgnoreCase);
     private static readonly List<DiagnosticItem> _erreursExecution = new();
 
+    public static string DernierJournalExecution { get; set; } = "";
+
     private static readonly Regex _rxPythonFile = new(@"File ""([^""]+)"", line (\d+)", RegexOptions.Compiled);
     private static readonly Regex _rxMsbuild = new(@"^([^\(\r\n]+)\((\d+),(\d+)\):\s*(error|warning)\s+([A-Z0-9]+):\s*(.+)$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex _rxGccRust = new(@"^([A-Za-z]:[^:\r\n]+|[^:\r\n]+\.[A-Za-z0-9]+):(\d+):(?:(\d+):)?\s*(fatal error|error|warning):\s*(.+)$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -74,6 +76,7 @@ public static class DiagnosticService
         lock (_verrou)
         {
             _erreursExecution.Clear();
+            DernierJournalExecution = "";
         }
         AppEvents.SignalerDiagnosticsChanges();
     }

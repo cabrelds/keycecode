@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
@@ -5,11 +6,19 @@ using System.Text.Json;
 namespace KeyCode.Services;
 
 /// <summary>
-/// Client asynchrone pour l'API Google Gemini (modèles gemini-2.5-flash, gemini-2.5-pro, etc.).
+/// Client asynchrone pour l'API Google Gemini avec découverte dynamique des modèles actifs et repli automatique.
 /// </summary>
 public static class GeminiService
 {
     public sealed record MessageChat(string Role, string Texte);
+
+    public static readonly string[] ModelesParDefaut =
+    {
+        "gemini-3.8-flash",
+        "gemini-flash-latest",
+        "gemini-3.7-flash",
+        "gemini-3.8-pro"
+    };
 
     private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(75) };
 
@@ -17,6 +26,79 @@ public static class GeminiService
         "Tu es l'assistant IA intégré à l'éditeur de code KeyCode (style VS Code, en C# WPF .NET 10). " +
         "Réponds en français de façon claire, structurée et concise. " +
         "Lorsque tu fournis du code, mets-le dans un bloc Markdown ```langage ... ``` propre et prêt à être inséré directement dans l'éditeur.";
+
+    /// <summary>Interroge l'API Google AI pour lister les modèles Gemini compatibles generateContent.</summary>
+    public static async Task<List<string>> ListerModelesDisponiblesAsync(
+        string? cleApi = null,
+        CancellationToken jeton = default)
+    {
+        var cle = (cleApi ?? SettingsService.CleApiGemini ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(cle))
+            return new List<string>(ModelesParDefaut);
+
+        var url = $"https://generativelanguage.googleapis.com/v1beta/models?key={Uri.EscapeDataString(cle)}";
+        try
+        {
+            using var resp = await _http.GetAsync(url, jeton).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode)
+                return new List<string>(ModelesParDefaut);
+
+            var corps = await resp.Content.ReadAsStringAsync(jeton).ConfigureAwait(false);
+            using var doc = JsonDocument.Parse(corps);
+            if (!doc.RootElement.TryGetProperty("models", out var models))
+                return new List<string>(ModelesParDefaut);
+
+            var candidats = new List<string>();
+            foreach (var m in models.EnumerateArray())
+            {
+                if (!m.TryGetProperty("name", out var nameEl)) continue;
+                var nomComplet = nameEl.GetString() ?? "";
+                var id = nomComplet.StartsWith("models/", StringComparison.OrdinalIgnoreCase)
+                    ? nomComplet["models/".Length..]
+                    : nomComplet;
+
+                if (!id.StartsWith("gemini", StringComparison.OrdinalIgnoreCase)) continue;
+                if (id.Contains("embedding", StringComparison.OrdinalIgnoreCase) ||
+                    id.Contains("tts", StringComparison.OrdinalIgnoreCase) ||
+                    id.Contains("imagen", StringComparison.OrdinalIgnoreCase) ||
+                    id.Contains("live", StringComparison.OrdinalIgnoreCase) ||
+                    id.Contains("native-audio", StringComparison.OrdinalIgnoreCase) ||
+                    id.Contains("robotics", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (!m.TryGetProperty("supportedGenerationMethods", out var methods)) continue;
+                var supporteChat = false;
+                foreach (var meth in methods.EnumerateArray())
+                {
+                    if (string.Equals(meth.GetString(), "generateContent", StringComparison.OrdinalIgnoreCase))
+                    {
+                        supporteChat = true;
+                        break;
+                    }
+                }
+
+                if (supporteChat)
+                    candidats.Add(id);
+            }
+
+            if (candidats.Count == 0)
+                return new List<string>(ModelesParDefaut);
+
+            // Classe les meilleurs modèles récents Flash puis Pro en tête
+            return candidats
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderByDescending(c => c.Contains("flash", StringComparison.OrdinalIgnoreCase))
+                .ThenByDescending(c => c.Contains("latest", StringComparison.OrdinalIgnoreCase))
+                .ThenByDescending(c => c, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+        catch (Exception)
+        {
+            return new List<string>(ModelesParDefaut);
+        }
+    }
 
     public static async Task<(bool Succes, string Reponse)> EnvoyerAsync(
         IReadOnlyList<MessageChat> historique,
@@ -32,11 +114,38 @@ public static class GeminiService
         }
 
         var modele = string.IsNullOrWhiteSpace(SettingsService.ModeleGemini)
-            ? "gemini-2.5-flash"
+            ? ModelesParDefaut[0]
             : SettingsService.ModeleGemini.Trim();
 
-        var url = $"https://generativelanguage.googleapis.com/v1beta/models/{Uri.EscapeDataString(modele)}:generateContent?key={Uri.EscapeDataString(cle)}";
+        var chargeJson = ConstruireChargeJson(historique, contexteSupplementaire);
+        var (succes, codeHttp, texteReponse) = await ExecuterRequeteAsync(cle, modele, chargeJson, jeton).ConfigureAwait(false);
 
+        // Si le modèle configuré est obsolète / indisponible pour cette clé, bascule automatiquement sur un modèle actif
+        if (!succes && EstErreurModeleIndisponible(codeHttp, texteReponse))
+        {
+            var disponibles = await ListerModelesDisponiblesAsync(cle, jeton).ConfigureAwait(false);
+            var deRepli = disponibles.FirstOrDefault(m =>
+                !string.Equals(m, modele, StringComparison.OrdinalIgnoreCase));
+
+            if (!string.IsNullOrWhiteSpace(deRepli))
+            {
+                var tentativeRepli = await ExecuterRequeteAsync(cle, deRepli, chargeJson, jeton).ConfigureAwait(false);
+                if (tentativeRepli.Succes)
+                {
+                    SettingsService.ModeleGemini = deRepli;
+                    SettingsService.Enregistrer();
+                    return (true, $"*(Modèle mis à jour automatiquement vers `{deRepli}`)*\n\n{tentativeRepli.Reponse}");
+                }
+            }
+        }
+
+        return (succes, texteReponse);
+    }
+
+    private static string ConstruireChargeJson(
+        IReadOnlyList<MessageChat> historique,
+        string? contexteSupplementaire)
+    {
         var contents = new List<object>();
         for (var i = 0; i < historique.Count; i++)
         {
@@ -66,12 +175,22 @@ public static class GeminiService
             }
         };
 
+        return JsonSerializer.Serialize(charge);
+    }
+
+    private static async Task<(bool Succes, HttpStatusCode CodeHttp, string Reponse)> ExecuterRequeteAsync(
+        string cle,
+        string modele,
+        string chargeJson,
+        CancellationToken jeton)
+    {
+        var url = $"https://generativelanguage.googleapis.com/v1beta/models/{Uri.EscapeDataString(modele)}:generateContent?key={Uri.EscapeDataString(cle)}";
+
         try
         {
-            var json = JsonSerializer.Serialize(charge);
             using var req = new HttpRequestMessage(HttpMethod.Post, url)
             {
-                Content = new StringContent(json, Encoding.UTF8, "application/json")
+                Content = new StringContent(chargeJson, Encoding.UTF8, "application/json")
             };
 
             using var resp = await _http.SendAsync(req, jeton).ConfigureAwait(false);
@@ -82,9 +201,9 @@ public static class GeminiService
             {
                 var errMsg = doc.RootElement.TryGetProperty("error", out var err) &&
                              err.TryGetProperty("message", out var m)
-                    ? m.GetString()
+                    ? m.GetString() ?? $"Erreur HTTP {(int)resp.StatusCode}"
                     : $"Erreur HTTP {(int)resp.StatusCode}";
-                return (false, $"Erreur Gemini : {errMsg}");
+                return (false, resp.StatusCode, $"Erreur Gemini : {errMsg}");
             }
 
             if (doc.RootElement.TryGetProperty("candidates", out var candidates) &&
@@ -102,19 +221,28 @@ public static class GeminiService
                     }
                     var resultat = sb.ToString().Trim();
                     if (!string.IsNullOrEmpty(resultat))
-                        return (true, resultat);
+                        return (true, resp.StatusCode, resultat);
                 }
             }
 
-            return (false, "Gemini n'a renvoyé aucun contenu exploitable.");
+            return (false, resp.StatusCode, "Gemini n'a renvoyé aucun contenu exploitable.");
         }
         catch (OperationCanceledException)
         {
-            return (false, "Requête annulée.");
+            return (false, HttpStatusCode.RequestTimeout, "Requête annulée.");
         }
         catch (Exception ex)
         {
-            return (false, $"Impossible de joindre l'API Gemini : {ex.Message}");
+            return (false, 0, $"Impossible de joindre l'API Gemini : {ex.Message}");
         }
+    }
+
+    private static bool EstErreurModeleIndisponible(HttpStatusCode codeHttp, string message)
+    {
+        if (codeHttp == HttpStatusCode.NotFound) return true;
+        return message.Contains("no longer available", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("not found", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("not supported for generateContent", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("deprecated", StringComparison.OrdinalIgnoreCase);
     }
 }

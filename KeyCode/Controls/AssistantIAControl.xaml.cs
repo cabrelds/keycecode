@@ -61,7 +61,51 @@ public partial class AssistantIAControl : UserControl
                 return;
             }
         }
-        ComboModele.SelectedIndex = 0;
+
+        if (!string.IsNullOrWhiteSpace(modele))
+        {
+            var ajoute = new ComboBoxItem { Content = modele };
+            ComboModele.Items.Insert(0, ajoute);
+            ComboModele.SelectedItem = ajoute;
+            return;
+        }
+
+        if (ComboModele.Items.Count > 0)
+            ComboModele.SelectedIndex = 0;
+    }
+
+    private async Task ChargerModelesEnLigneAsync(string? cleApi = null)
+    {
+        BoutonRafraichirModeles.IsEnabled = false;
+        var ancienStatut = TexteStatut.Text;
+        TexteStatut.Text = "Récupération des modèles Gemini disponibles...";
+        try
+        {
+            var modeles = await GeminiService.ListerModelesDisponiblesAsync(cleApi);
+            var cible = ComboModele.SelectedItem is ComboBoxItem ci
+                ? ci.Content?.ToString()
+                : SettingsService.ModeleGemini;
+
+            ComboModele.Items.Clear();
+            foreach (var m in modeles)
+                ComboModele.Items.Add(new ComboBoxItem { Content = m });
+
+            SelectionnerModeleDansCombo(string.IsNullOrWhiteSpace(cible) ? modeles[0] : cible);
+            if (!modeles.Contains(SettingsService.ModeleGemini, StringComparer.OrdinalIgnoreCase) && modeles.Count > 0)
+            {
+                SettingsService.ModeleGemini = modeles[0];
+                SelectionnerModeleDansCombo(modeles[0]);
+            }
+            TexteStatut.Text = $"{modeles.Count} modèle(s) Gemini chargé(s)";
+        }
+        catch (Exception)
+        {
+            TexteStatut.Text = ancienStatut;
+        }
+        finally
+        {
+            BoutonRafraichirModeles.IsEnabled = true;
+        }
     }
 
     public void FocaliserPrompt()
@@ -103,7 +147,10 @@ public partial class AssistantIAControl : UserControl
             if (jeton.IsCancellationRequested) return;
 
             if (succes)
+            {
                 _historique.Add(new GeminiService.MessageChat("model", reponse));
+                SelectionnerModeleDansCombo(SettingsService.ModeleGemini);
+            }
 
             AjouterCarteMessage(succes ? "model" : "error", reponse);
             TexteStatut.Text = succes ? "Réponse reçue" : "Configuration requise ou erreur";
@@ -149,6 +196,14 @@ public partial class AssistantIAControl : UserControl
                 sb.AppendLine("Diagnostics / Erreurs détectées :");
                 foreach (var d in diags.Take(12))
                     sb.AppendLine($"- [{d.Severite}] {Path.GetFileName(d.Chemin)} L{d.Ligne}: {d.Message}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(DiagnosticService.DernierJournalExecution))
+            {
+                sb.AppendLine("Dernière sortie du terminal d'exécution :");
+                sb.AppendLine("```");
+                sb.AppendLine(DiagnosticService.DernierJournalExecution.Trim());
+                sb.AppendLine("```");
             }
         }
 
@@ -361,14 +416,24 @@ public partial class AssistantIAControl : UserControl
             : Visibility.Visible;
     }
 
-    private void SauvegarderConfig_Click(object sender, RoutedEventArgs e)
+    private async void SauvegarderConfig_Click(object sender, RoutedEventArgs e)
     {
         SettingsService.CleApiGemini = ChampCleApi.Text.Trim();
         if (ComboModele.SelectedItem is ComboBoxItem item && item.Content is string m)
             SettingsService.ModeleGemini = m;
         SettingsService.Enregistrer();
+
+        if (!string.IsNullOrWhiteSpace(SettingsService.CleApiGemini))
+            await ChargerModelesEnLigneAsync(SettingsService.CleApiGemini);
+
+        SettingsService.Enregistrer();
         PanneauConfig.Visibility = Visibility.Collapsed;
-        TexteStatut.Text = "Clé API Gemini enregistrée";
+        TexteStatut.Text = $"Configuration enregistrée ({SettingsService.ModeleGemini})";
+    }
+
+    private async void RafraichirModeles_Click(object sender, RoutedEventArgs e)
+    {
+        await ChargerModelesEnLigneAsync(ChampCleApi.Text.Trim());
     }
 
     private void Effacer_Click(object sender, RoutedEventArgs e)

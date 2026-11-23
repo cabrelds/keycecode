@@ -109,6 +109,9 @@ public partial class TerminalControl : UserControl
                 {
                     ViderFileAffichage();
                     var contenuTotal = _journalExecution.ToString();
+                    DiagnosticService.DernierJournalExecution = contenuTotal.Length > 3500
+                        ? contenuTotal[^3500..]
+                        : contenuTotal;
                     DiagnosticService.AnalyserSortieExecution(contenuTotal, _dernierFichierExecute);
 
                     var msgFin = code == 0
@@ -340,11 +343,39 @@ public partial class TerminalControl : UserControl
         Saisie.Clear();
         if (!_runner.EnCours) return;
 
+        ViderFileAffichage();
         AjouterSegment(texte + "\n", "ThemeTexte");
         if (texte.Length > 0) _historique.Add(texte);
         _indexHistorique = _historique.Count;
 
         _runner.Envoyer(texte);
+    }
+
+    private void EnvoyerSaisie_Click(object sender, RoutedEventArgs e) => EnvoyerSaisie();
+
+    private void Sortie_PreviewTextInput(object sender, TextCompositionEventArgs e)
+    {
+        if (!_runner.EnCours || string.IsNullOrEmpty(e.Text)) return;
+        if (e.Text == "\r" || e.Text == "\n")
+        {
+            EnvoyerSaisie();
+            e.Handled = true;
+            return;
+        }
+        Saisie.Focus();
+        Saisie.AppendText(e.Text);
+        Saisie.CaretIndex = Saisie.Text.Length;
+        e.Handled = true;
+    }
+
+    private void Sortie_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (!_runner.EnCours) return;
+        if (e.Key == Key.Enter)
+        {
+            EnvoyerSaisie();
+            e.Handled = true;
+        }
     }
 
     private void ParcourirHistorique(int sens)
