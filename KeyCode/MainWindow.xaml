@@ -172,10 +172,12 @@
                             <MenuItem Header="_Affichage">
                                 <MenuItem Header="_Palette de commandes..." InputGestureText="Ctrl+Maj+P" Click="PaletteCommandes_Click"/>
                                 <MenuItem Header="Accès _rapide aux fichiers..." InputGestureText="Ctrl+P" Click="PaletteFichiers_Click"/>
+                                <MenuItem Header="_Extensions" InputGestureText="Ctrl+Maj+X" Click="Extensions_Click"/>
                                 <Separator/>
                                 <MenuItem Header="_Thème">
                                     <MenuItem Header="Sombre+ (VS Code)" Click="ThemeSombre_Click"/>
                                     <MenuItem Header="Clair+ (VS Code)" Click="ThemeClair_Click"/>
+                                    <MenuItem Header="One Dark Pro" Click="ThemeOneDark_Click"/>
                                 </MenuItem>
                                 <MenuItem Header="_Zoom">
                                     <MenuItem Header="Agrandir" Click="ZoomPlus_Click"/>
@@ -189,6 +191,8 @@
                             </MenuItem>
                             <MenuItem Header="E_xécuter">
                                 <MenuItem Header="_Exécuter le fichier" InputGestureText="F5" Click="Executer_Click"/>
+                                <MenuItem x:Name="MenuCodeRunner" Header="Code Runner : exécuter la sélection"
+                                          InputGestureText="Ctrl+Alt+N" Click="CodeRunner_Click" Visibility="Collapsed"/>
                                 <MenuItem Header="_Arrêter" Click="Arreter_Click"/>
                                 <MenuItem Header="_Effacer la sortie" Click="EffacerTerminal_Click"/>
                                 <Separator/>
@@ -306,6 +310,32 @@
                                       StrokeThickness="1.6" Fill="Transparent" Width="20" Height="20" Stretch="Uniform"/>
                             </Button>
 
+                            <Button x:Name="ActExtensions" ToolTip="Extensions (Ctrl+Maj+X)"
+                                    Style="{StaticResource BoutonBarreActivite}"
+                                    Click="ActiviteExtensions_Click">
+                                <Grid Width="24" Height="24">
+                                    <!-- Quatre carrés dont un décalé en haut à droite -->
+                                    <Path Data="M3,13.5 H10 V20.5 H3 Z M12,13.5 H19 V20.5 H12 Z M3,4.5 H10 V11.5 H3 Z M13.5,2.5 H20.5 V9.5 H13.5 Z"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                          StrokeThickness="1.6" StrokeLineJoin="Round" Fill="Transparent" Stretch="None"/>
+                                    <!-- Badge de rotation (visible pendant une installation / actualisation) -->
+                                    <Border x:Name="BadgeExtensions" Visibility="Collapsed"
+                                            Width="14" Height="14" CornerRadius="7"
+                                            HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,-7,-5"
+                                            Background="{DynamicResource ThemeAccent}"
+                                            BorderBrush="{DynamicResource ThemeBarreActivite}" BorderThickness="1.5">
+                                        <Path Data="M13,8 A5,5 0 1 1 11.2,4.2 M11.6,1.8 V4.6 H8.8"
+                                              Stroke="White" StrokeThickness="2" Width="7" Height="7" Stretch="Uniform"
+                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                              RenderTransformOrigin="0.5,0.5">
+                                            <Path.RenderTransform>
+                                                <RotateTransform x:Name="RotationBadge"/>
+                                            </Path.RenderTransform>
+                                        </Path>
+                                    </Border>
+                                </Grid>
+                            </Button>
+
                             <Button x:Name="ActExecuter" ToolTip="Exécuter le fichier actif (F5)"
                                     Style="{StaticResource BoutonBarreActivite}"
                                     Click="Executer_Click">
@@ -357,6 +387,8 @@
                     <ctl:ExplorateurControl x:Name="Explorateur" Grid.Row="0"/>
                     <ctl:RechercheFichiersControl x:Name="RechercheFichiers" Grid.Row="1"
                                                   Height="260" Visibility="Collapsed"/>
+                    <ctl:ExtensionsControl x:Name="PanneauExtensions" Grid.Row="0" Grid.RowSpan="2"
+                                           Visibility="Collapsed"/>
                 </Grid>
 
                 <GridSplitter x:Name="SeparateurGauche" Grid.Column="2" Width="4"
@@ -373,6 +405,7 @@
                     <Grid Grid.Row="0">
                         <ctl:OngletsControl x:Name="Onglets"/>
                         <ctl:RechercheControl x:Name="Recherche"/>
+                        <ctl:ExtensionDetailControl x:Name="DetailExtension" Visibility="Collapsed"/>
                     </Grid>
 
                     <GridSplitter x:Name="SeparateurBas" Grid.Row="1" Height="4"

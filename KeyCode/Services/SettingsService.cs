@@ -27,6 +27,12 @@ public static class SettingsService
     public static bool PanneauIAVisible { get; set; }
     public static double LargeurPanneauIA { get; set; } = 340;
 
+    // Extensions (Place de marché)
+    public static List<string> ExtensionsInstallees { get; set; } = new();
+    public static List<string> ExtensionsDesactivees { get; set; } = new();
+    public static List<string> ExtensionsSansMiseAJourAuto { get; set; } = new();
+    public static string VarianteTheme { get; set; } = "";
+
     private static readonly string _dossier =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "KeyCode");
 
@@ -47,6 +53,10 @@ public static class SettingsService
         public double HauteurPanneauBas { get; set; } = 210;
         public bool PanneauIAVisible { get; set; }
         public double LargeurPanneauIA { get; set; } = 340;
+        public List<string>? ExtensionsInstallees { get; set; } = new();
+        public List<string>? ExtensionsDesactivees { get; set; } = new();
+        public List<string>? ExtensionsSansMiseAJourAuto { get; set; } = new();
+        public string? VarianteTheme { get; set; } = "";
     }
 
     public static void Charger()
@@ -82,6 +92,12 @@ public static class SettingsService
             HauteurPanneauBas = donnees.HauteurPanneauBas is >= 100 and <= 500 ? donnees.HauteurPanneauBas : 210;
             PanneauIAVisible = donnees.PanneauIAVisible;
             LargeurPanneauIA = donnees.LargeurPanneauIA is >= 240 and <= 650 ? donnees.LargeurPanneauIA : 340;
+            ExtensionsInstallees = NettoyerListe(donnees.ExtensionsInstallees);
+            ExtensionsDesactivees = NettoyerListe(donnees.ExtensionsDesactivees);
+            ExtensionsSansMiseAJourAuto = NettoyerListe(donnees.ExtensionsSansMiseAJourAuto);
+            VarianteTheme = string.Equals(donnees.VarianteTheme, "OneDarkPro", StringComparison.OrdinalIgnoreCase)
+                ? "OneDarkPro"
+                : "";
         }
         catch (Exception)
         {
@@ -108,7 +124,11 @@ public static class SettingsService
                 LargeurPanneauGauche = LargeurPanneauGauche,
                 HauteurPanneauBas = HauteurPanneauBas,
                 PanneauIAVisible = PanneauIAVisible,
-                LargeurPanneauIA = LargeurPanneauIA
+                LargeurPanneauIA = LargeurPanneauIA,
+                ExtensionsInstallees = ExtensionsInstallees ?? new List<string>(),
+                ExtensionsDesactivees = ExtensionsDesactivees ?? new List<string>(),
+                ExtensionsSansMiseAJourAuto = ExtensionsSansMiseAJourAuto ?? new List<string>(),
+                VarianteTheme = VarianteTheme ?? ""
             };
 
             var temporaire = _fichier + ".tmp";
@@ -135,7 +155,17 @@ public static class SettingsService
         HauteurPanneauBas = 210;
         PanneauIAVisible = false;
         LargeurPanneauIA = 340;
+        ExtensionsInstallees = new List<string>();
+        ExtensionsDesactivees = new List<string>();
+        ExtensionsSansMiseAJourAuto = new List<string>();
+        VarianteTheme = "";
     }
+
+    private static List<string> NettoyerListe(List<string>? liste) =>
+        (liste ?? new List<string>())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
     private static string MigrerModeleObsolete(string? modele)
     {

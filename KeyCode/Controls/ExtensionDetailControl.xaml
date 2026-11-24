@@ -1,0 +1,75 @@
+<UserControl x:Class="KeyCode.Controls.ExtensionDetailControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="{DynamicResource ThemeFond}"
+             Foreground="{DynamicResource ThemeTexte}"
+             FontSize="13">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="35"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Onglet « Extension : Nom » (comme un onglet d'éditeur en aperçu) -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource ThemeFondSecondaire}"
+                BorderBrush="{DynamicResource ThemeBordure}" BorderThickness="0,0,0,1">
+            <Border HorizontalAlignment="Left" MinWidth="200"
+                    Background="{DynamicResource ThemeFond}"
+                    BorderBrush="{DynamicResource ThemeBordure}" BorderThickness="0,0,1,0">
+                <Grid>
+                    <Border Height="1" VerticalAlignment="Top" Background="{DynamicResource ThemeAccent}"/>
+                    <StackPanel Orientation="Horizontal" Margin="12,0,6,0" VerticalAlignment="Center">
+                        <ContentControl x:Name="IconeOnglet" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <TextBlock x:Name="TitreOnglet" FontStyle="Italic" FontSize="13"
+                                   Foreground="{DynamicResource ThemeTexte}"
+                                   VerticalAlignment="Center" Margin="0,0,14,0"/>
+                        <Button x:Name="BoutonFermerOnglet" Style="{StaticResource BoutonIconeExt}"
+                                Width="20" Height="20" ToolTip="Fermer" Click="FermerOnglet_Click"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Border>
+
+        <!-- En-tête : grande icône, nom, éditeur | téléchargements | note, description, boutons -->
+        <Grid Grid.Row="1" Margin="40,26,40,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <ContentControl x:Name="IconeGrande" Grid.Column="0" VerticalAlignment="Top" Margin="0,0,28,0"/>
+            <StackPanel Grid.Column="1">
+                <TextBlock x:Name="NomExtension" FontSize="26"
+                           Foreground="{DynamicResource ThemeTexte}" TextTrimming="CharacterEllipsis"/>
+                <StackPanel x:Name="LigneMeta" Orientation="Horizontal" Margin="0,6,0,0"/>
+                <TextBlock x:Name="DescriptionExtension" FontSize="14" TextWrapping="Wrap" Margin="0,8,0,0"
+                           Foreground="{DynamicResource ThemeTexte}"/>
+                <StackPanel x:Name="ZoneActions" Orientation="Horizontal" Margin="0,14,0,0"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- Navigation DÉTAILS / FONCTIONNALITÉS / JOURNAL DES MODIFICATIONS -->
+        <Border Grid.Row="2" Margin="40,18,40,0"
+                BorderBrush="{DynamicResource ThemeBordure}" BorderThickness="0,0,0,1">
+            <StackPanel x:Name="Navigation" Orientation="Horizontal"/>
+        </Border>
+
+        <!-- Corps : contenu à gauche, informations à droite -->
+        <Grid Grid.Row="3">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="320"/>
+            </Grid.ColumnDefinitions>
+            <ScrollViewer x:Name="DefileurContenu" Grid.Column="0"
+                          VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel x:Name="Contenu" Margin="40,16,28,30"/>
+            </ScrollViewer>
+            <ScrollViewer x:Name="DefileurLateral" Grid.Column="1"
+                          VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel x:Name="Lateral" Margin="0,16,40,30"/>
+            </ScrollViewer>
+        </Grid>
+    </Grid>
+</UserControl>
