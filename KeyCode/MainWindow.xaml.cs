@@ -2,6 +2,8 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
 using ICSharpCode.AvalonEdit;
 using KeyCode.Controls;
 using KeyCode.Services;
@@ -15,6 +17,12 @@ namespace KeyCode;
 /// </summary>
 public partial class MainWindow : Window
 {
+    private enum VueGauche { Explorateur, Recherche, Extensions }
+
+    private VueGauche _vueGauche = VueGauche.Explorateur;
+    private TextEditor? _editeurAuDetail;
+    private bool _badgeAnime;
+
     private TextEditor? _editeurSuivi;
     private double _largeurGauche = 260;
     private double _largeurIA = 340;
@@ -23,6 +31,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         SettingsService.Charger();
+        ExtensionsService.Initialiser();
         ThemeManager.Appliquer(SettingsService.Theme);
 
         _largeurGauche = SettingsService.LargeurPanneauGauche;
@@ -49,6 +58,7 @@ public partial class MainWindow : Window
         AssistantIA.DemandeMasquage += () => AfficherPanneauIA(false);
 
         InitialiserPaletteCommandes();
+        InitialiserExtensions();
 
         if (!string.IsNullOrEmpty(SettingsService.DernierDossier)
             && Directory.Exists(SettingsService.DernierDossier))
@@ -229,10 +239,9 @@ public partial class MainWindow : Window
 
     private void AfficherRechercheFichiers()
     {
+        _vueGauche = VueGauche.Recherche;
         if (PanneauGauche.Visibility != Visibility.Visible) BasculerExplorateur();
-        RechercheFichiers.Afficher();
-        ActExplorateur.Tag = null;
-        ActRecherche.Tag = "Actif";
+        AppliquerVueGauche();
     }
 
     // ------------------------------------------------------------------
@@ -241,26 +250,23 @@ public partial class MainWindow : Window
 
     private void ActiviteExplorateur_Click(object sender, RoutedEventArgs e)
     {
-        if (PanneauGauche.Visibility == Visibility.Visible && RechercheFichiers.Visibility != Visibility.Visible)
+        if (PanneauGauche.Visibility == Visibility.Visible && _vueGauche == VueGauche.Explorateur)
         {
             BasculerExplorateur();
+            return;
         }
-        else
-        {
-            if (PanneauGauche.Visibility != Visibility.Visible) BasculerExplorateur();
-            RechercheFichiers.Masquer();
-            ActExplorateur.Tag = "Actif";
-            ActRecherche.Tag = null;
-        }
+
+        _vueGauche = VueGauche.Explorateur;
+        if (PanneauGauche.Visibility != Visibility.Visible) BasculerExplorateur();
+        AppliquerVueGauche();
     }
 
     private void ActiviteRecherche_Click(object sender, RoutedEventArgs e)
     {
-        if (PanneauGauche.Visibility == Visibility.Visible && RechercheFichiers.Visibility == Visibility.Visible)
+        if (PanneauGauche.Visibility == Visibility.Visible && _vueGauche == VueGauche.Recherche)
         {
-            RechercheFichiers.Masquer();
-            ActExplorateur.Tag = "Actif";
-            ActRecherche.Tag = null;
+            _vueGauche = VueGauche.Explorateur;
+            AppliquerVueGauche();
         }
         else
         {
@@ -268,20 +274,78 @@ public partial class MainWindow : Window
         }
     }
 
+    private void ActiviteExtensions_Click(object sender, RoutedEventArgs e)
+    {
+        if (PanneauGauche.Visibility == Visibility.Visible && _vueGauche == VueGauche.Extensions)
+            BasculerExplorateur();
+        else
+            AfficherExtensions();
+    }
+
+    private void Extensions_Click(object sender, RoutedEventArgs e) => AfficherExtensions();
+
+    /// <summary>Affiche la vue choisie dans le panneau gauche et met à jour la barre d'activité.</summary>
+    private void AppliquerVueGauche()
+    {
+        PanneauExtensions.Visibility = _vueGauche == VueGauche.Extensions ? Visibility.Visible : Visibility.Collapsed;
+
+        if (_vueGauche == VueGauche.Recherche)
+            RechercheFichiers.Afficher();
+        else if (RechercheFichiers.Visibility == Visibility.Visible)
+            RechercheFichiers.Masquer();
+
+        MettreAJourBarreActivite();
+    }
+
+    private void MettreAJourBarreActivite()
+    {
+        var visible = PanneauGauche.Visibility == Visibility.Visible;
+        ActExplorateur.Tag = visible && _vueGauche == VueGauche.Explorateur ? "Actif" : null;
+        ActRecherche.Tag = visible && _vueGauche == VueGauche.Recherche ? "Actif" : null;
+        ActExtensions.Tag = visible && _vueGauche == VueGauche.Extensions ? "Actif" : null;
+    }
+
+    /// <summary>Ouvre le panneau Extensions ; une requête non nulle remplit le champ de recherche ("" = tout effacer).</summary>
+    private void AfficherExtensions(string? requete = null)
+    {
+        _vueGauche = VueGauche.Extensions;
+        if (PanneauGauche.Visibility != Visibility.Visible) BasculerExplorateur();
+        AppliquerVueGauche();
+        if (requete != null) PanneauExtensions.DefinirRecherche(requete);
+        Dispatcher.BeginInvoke(() => PanneauExtensions.FocaliserRecherche());
+    }
+
     private void ThemeClair_Click(object sender, RoutedEventArgs e) => ChangerTheme("Clair");
-    private void ThemeSombre_Click(object sender, RoutedEventArgs e) => ChangerTheme("Sombre");
+    private void ThemeSombre_Click(object sender, RoutedEventArgs e) => ChangerTheme("Sombre", "");
+    private void ThemeOneDark_Click(object sender, RoutedEventArgs e) => AppliquerOneDarkPro();
     private void BasculerTheme_Click(object sender, RoutedEventArgs e) =>
         ChangerTheme(ThemeManager.ThemeActuel == "Sombre" ? "Clair" : "Sombre");
 
-    private void ChangerTheme(string theme)
+    /// <summary>Applique One Dark Pro si l'extension est active, sinon ouvre sa fiche dans la Place de marché.</summary>
+    private void AppliquerOneDarkPro()
     {
+        if (!ExtensionsService.EstActive(ExtensionsService.IdOneDarkPro))
+        {
+            AfficherExtensions("One Dark Pro");
+            return;
+        }
+        ChangerTheme("Sombre", "OneDarkPro");
+    }
+
+    /// <param name="variante">null = conserver la variante actuelle ; "" = Sombre+ ; "OneDarkPro".</param>
+    private void ChangerTheme(string theme, string? variante = null)
+    {
+        if (variante != null) ThemeManager.DefinirVariante(variante);
         ThemeManager.Appliquer(theme);
         SettingsService.Theme = theme;
+        SettingsService.VarianteTheme = ThemeManager.Variante;
         MettreAJourBoutonTheme();
     }
 
     private void MettreAJourBoutonTheme() =>
-        BoutonStatutTheme.Content = ThemeManager.ThemeActuel == "Sombre" ? "🌙 Sombre" : "☀ Clair";
+        BoutonStatutTheme.Content = ThemeManager.ThemeActuel == "Clair"
+            ? "☀ Clair"
+            : ThemeManager.Variante == "OneDarkPro" ? "🌙 One Dark Pro" : "🌙 Sombre";
 
     private void ZoomPlus_Click(object sender, RoutedEventArgs e) => ChangerTaille(SettingsService.TaillePolice + 2);
     private void ZoomMoins_Click(object sender, RoutedEventArgs e) => ChangerTaille(SettingsService.TaillePolice - 2);
@@ -313,8 +377,6 @@ public partial class MainWindow : Window
             SeparateurGauche.Visibility = Visibility.Collapsed;
             ColonneGauche.Width = new GridLength(0);
             ColonneSeparateurGauche.Width = new GridLength(0);
-            ActExplorateur.Tag = null;
-            ActRecherche.Tag = null;
         }
         else
         {
@@ -322,9 +384,9 @@ public partial class MainWindow : Window
             SeparateurGauche.Visibility = Visibility.Visible;
             ColonneGauche.Width = new GridLength(_largeurGauche);
             ColonneSeparateurGauche.Width = new GridLength(4);
-            ActExplorateur.Tag = RechercheFichiers.Visibility == Visibility.Visible ? null : "Actif";
-            ActRecherche.Tag = RechercheFichiers.Visibility == Visibility.Visible ? "Actif" : null;
         }
+
+        MettreAJourBarreActivite();
     }
 
     private void BasculerTerminal_Click(object sender, RoutedEventArgs e) => BasculerTerminal();
@@ -457,6 +519,121 @@ public partial class MainWindow : Window
     }
 
     // ------------------------------------------------------------------
+    // Extensions : page de détail, badge de la barre d'activité, Code Runner
+    // ------------------------------------------------------------------
+
+    private void InitialiserExtensions()
+    {
+        AppEvents.ExtensionDemandee += AfficherDetailExtension;
+        AppEvents.ExtensionsChangees += () => Dispatcher.InvokeAsync(() =>
+        {
+            MettreAJourBadgeExtensions();
+            MettreAJourMenuCodeRunner();
+        });
+
+        // La page de détail se ferme quand on ouvre un fichier ou qu'on change d'onglet
+        AppEvents.FichierDemande += _ => FermerDetailExtension();
+        AppEvents.FichierDemandeALaLigne += (_, _) => FermerDetailExtension();
+        AppEvents.EditeurActifChange += () =>
+        {
+            if (DetailExtension.Visibility == Visibility.Visible
+                && !ReferenceEquals(Contexte.EditeurActif, _editeurAuDetail))
+                FermerDetailExtension();
+        };
+        DetailExtension.DemandeFermeture += FermerDetailExtension;
+
+        MettreAJourBadgeExtensions();
+        MettreAJourMenuCodeRunner();
+    }
+
+    private void AfficherDetailExtension(string id)
+    {
+        DetailExtension.Afficher(id);
+        _editeurAuDetail = Contexte.EditeurActif;
+        DetailExtension.Visibility = Visibility.Visible;
+    }
+
+    private void FermerDetailExtension() => DetailExtension.Visibility = Visibility.Collapsed;
+
+    private void MettreAJourBadgeExtensions()
+    {
+        var enCours = ExtensionsService.OperationEnCours;
+        BadgeExtensions.Visibility = enCours ? Visibility.Visible : Visibility.Collapsed;
+
+        if (enCours == _badgeAnime) return;
+        _badgeAnime = enCours;
+
+        if (enCours)
+        {
+            RotationBadge.BeginAnimation(RotateTransform.AngleProperty,
+                new DoubleAnimation(0, 360, TimeSpan.FromSeconds(1)) { RepeatBehavior = RepeatBehavior.Forever });
+        }
+        else
+        {
+            RotationBadge.BeginAnimation(RotateTransform.AngleProperty, null);
+        }
+    }
+
+    private void MettreAJourMenuCodeRunner() =>
+        MenuCodeRunner.Visibility = ExtensionsService.EstActive(ExtensionsService.IdCodeRunner)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+    private void CodeRunner_Click(object sender, RoutedEventArgs e) => ExecuterCode();
+
+    /// <summary>
+    /// Code Runner : exécute la sélection (copiée dans un fichier temporaire de même extension),
+    /// ou le fichier actif si rien n'est sélectionné. Sans l'extension active, ouvre sa fiche.
+    /// </summary>
+    private void ExecuterCode()
+    {
+        if (!ExtensionsService.EstActive(ExtensionsService.IdCodeRunner))
+        {
+            AfficherExtensions("Code Runner");
+            return;
+        }
+
+        var editeur = Contexte.EditeurActif;
+        var selection = editeur?.SelectedText;
+        if (editeur == null || string.IsNullOrWhiteSpace(selection))
+        {
+            ExecuterFichier();
+            return;
+        }
+
+        var extension = Contexte.CheminActif == null ? "" : Path.GetExtension(Contexte.CheminActif);
+        if (extension.Length == 0 || LangagesService.Obtenir(extension) == null)
+        {
+            MessageBox.Show("Enregistrez d'abord le fichier avec une extension de langage pris en charge.",
+                "Code Runner");
+            return;
+        }
+
+        if (extension.Equals(".cs", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".java", StringComparison.OrdinalIgnoreCase))
+        {
+            MessageBox.Show("Pour C# et Java, la sélection seule n'est pas prise en charge : exécutez le fichier complet (F5).",
+                "Code Runner");
+            return;
+        }
+
+        try
+        {
+            var dossier = Path.Combine(Path.GetTempPath(), "keycode_coderunner");
+            Directory.CreateDirectory(dossier);
+            var fichier = Path.Combine(dossier, "selection" + extension.ToLowerInvariant());
+            File.WriteAllText(fichier, selection, new System.Text.UTF8Encoding(false));
+
+            if (Terminal.Visibility != Visibility.Visible) BasculerTerminal();
+            Terminal.Executer(fichier);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(ex.Message, "Code Runner");
+        }
+    }
+
+    // ------------------------------------------------------------------
     // Exécuter / Terminal / Problèmes
     // ------------------------------------------------------------------
 
@@ -543,8 +720,9 @@ public partial class MainWindow : Window
 
         var maj = (mod & ModifierKeys.Shift) != 0;
         var alt = (mod & ModifierKeys.Alt) != 0;
+        var touche = e.Key == Key.System ? e.SystemKey : e.Key;
 
-        switch (e.Key)
+        switch (touche)
         {
             case Key.N when !maj && !alt: Onglets.NouvelOnglet(); e.Handled = true; break;
             case Key.O when !maj && !alt: Ouvrir_Click(this, new RoutedEventArgs()); e.Handled = true; break;
@@ -553,10 +731,13 @@ public partial class MainWindow : Window
             case Key.W when !maj && !alt: Onglets.FermerOngletActif(); e.Handled = true; break;
             case Key.P when !maj && !alt: Palette.Ouvrir(modeCommandes: false); e.Handled = true; break;
             case Key.P when maj && !alt: Palette.Ouvrir(modeCommandes: true); e.Handled = true; break;
-            case Key.E when maj && !alt: BasculerExplorateur(); e.Handled = true; break;
+            case Key.E when maj && !alt: ActiviteExplorateur_Click(this, new RoutedEventArgs()); e.Handled = true; break;
             case Key.F when maj && !alt: AfficherRechercheFichiers(); e.Handled = true; break;
+            case Key.X when maj && !alt: AfficherExtensions(); e.Handled = true; break;
             case Key.J when !maj && !alt: BasculerTerminal(); e.Handled = true; break;
             case Key.I when alt && !maj: AfficherPanneauIA(AssistantIA.Visibility != Visibility.Visible); e.Handled = true; break;
+            case Key.N when alt && !maj && ExtensionsService.EstActive(ExtensionsService.IdCodeRunner):
+                ExecuterCode(); e.Handled = true; break;
         }
     }
 

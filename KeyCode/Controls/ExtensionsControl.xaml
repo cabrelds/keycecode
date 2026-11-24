@@ -1,0 +1,70 @@
+<UserControl x:Class="KeyCode.Controls.ExtensionsControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="{DynamicResource ThemeFondSecondaire}"
+             Foreground="{DynamicResource ThemeTexte}"
+             FontSize="12">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="35"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- En-tête : titre + actualiser + autres actions -->
+        <Grid Grid.Row="0">
+            <TextBlock x:Name="TitrePanneau" Text="Extensions" FontSize="13" FontWeight="SemiBold"
+                       Margin="20,0,64,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,8,0">
+                <Button x:Name="BoutonActualiser" Style="{StaticResource BoutonIconeExt}"
+                        ToolTip="Actualiser" Click="Actualiser_Click"/>
+                <Button x:Name="BoutonPlus" Style="{StaticResource BoutonIconeExt}" Margin="2,0,0,0"
+                        ToolTip="Afficher d'autres actions..." Click="Plus_Click"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- Champ de recherche avec effacer + filtre -->
+        <Border x:Name="BordureRecherche" Grid.Row="1" Margin="12,0,12,8" Height="28"
+                CornerRadius="2" BorderThickness="1"
+                Background="{DynamicResource ThemeSaisieFond}"
+                BorderBrush="{DynamicResource ThemeSaisieBordure}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBox x:Name="ChampRecherche" Grid.Column="0"
+                         Background="Transparent" BorderThickness="0"
+                         Foreground="{DynamicResource ThemeTexte}"
+                         CaretBrush="{DynamicResource ThemeTexte}"
+                         SelectionBrush="{DynamicResource ThemeSelection}"
+                         FontSize="12.5" Padding="4,0"
+                         VerticalContentAlignment="Center" VerticalAlignment="Stretch"
+                         TextChanged="ChampRecherche_TextChanged"
+                         GotKeyboardFocus="ChampRecherche_GotFocus"
+                         LostKeyboardFocus="ChampRecherche_LostFocus"
+                         PreviewKeyDown="ChampRecherche_PreviewKeyDown"/>
+                <TextBlock x:Name="Indication" Grid.Column="0" IsHitTestVisible="False"
+                           Text="Rechercher des extensions dans la Place de marché"
+                           Foreground="{DynamicResource ThemeTexteSecondaire}"
+                           FontSize="12.5" Margin="8,0,4,0" VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis"/>
+
+                <Button x:Name="BoutonEffacer" Grid.Column="1" Style="{StaticResource BoutonIconeExt}"
+                        Margin="0,0,1,0" ToolTip="Effacer les résultats de la recherche d'extensions"
+                        Click="Effacer_Click"/>
+                <Button x:Name="BoutonFiltre" Grid.Column="2" Style="{StaticResource BoutonIconeExt}"
+                        Margin="0,0,3,0" ToolTip="Filtrer les extensions"
+                        Click="Filtre_Click"/>
+            </Grid>
+        </Border>
+
+        <!-- Liste (sections ou résultats), construite en code -->
+        <ScrollViewer x:Name="Defileur" Grid.Row="2"
+                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel x:Name="Liste"/>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

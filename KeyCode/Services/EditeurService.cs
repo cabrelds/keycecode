@@ -60,6 +60,7 @@ public static class EditeurService
     {
         AppEvents.ThemeChange += _ => ReconfigurerTous();
         AppEvents.DiagnosticsChanges += MettreAJourMarqueursTous;
+        AppEvents.ExtensionsChangees += SurExtensionsChangees;
     }
 
     /// <summary>Configure un éditeur. chemin vaut null pour un onglet pas encore enregistré.</summary>
@@ -101,6 +102,23 @@ public static class EditeurService
                 AppliquerApparence(editeur, etat);
             else
                 editeur.Dispatcher.InvokeAsync(() => AppliquerApparence(editeur, etat));
+        }
+    }
+
+    /// <summary>
+    /// Une extension a changé d'état : recolore tous les éditeurs (Better Comments, One Dark Pro)
+    /// et redessine les diagnostics (Error Lens).
+    /// </summary>
+    private static void SurExtensionsChangees()
+    {
+        ReconfigurerTous();
+
+        foreach (var editeur in EditeursVivants())
+        {
+            if (!_etats.TryGetValue(editeur, out var etat) || etat.Marqueurs == null) continue;
+            var marqueurs = etat.Marqueurs;
+            if (editeur.Dispatcher.CheckAccess()) marqueurs.Redessiner();
+            else editeur.Dispatcher.InvokeAsync(marqueurs.Redessiner);
         }
     }
 

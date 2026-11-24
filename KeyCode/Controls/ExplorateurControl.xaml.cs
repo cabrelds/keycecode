@@ -18,9 +18,20 @@ public partial class ExplorateurControl : UserControl
 
     private string? _dossierRacine;
 
+    private bool _iconesMaterial;
+
     public ExplorateurControl()
     {
         InitializeComponent();
+
+        _iconesMaterial = ExtensionsService.EstActive(ExtensionsService.IdMaterialIcon);
+        AppEvents.ExtensionsChangees += () => Dispatcher.InvokeAsync(() =>
+        {
+            var actif = ExtensionsService.EstActive(ExtensionsService.IdMaterialIcon);
+            if (actif == _iconesMaterial) return;
+            _iconesMaterial = actif;
+            Actualiser();
+        });
     }
 
     /// <summary>Affiche le dossier, met à jour le contexte et prévient l'application.</summary>
@@ -119,6 +130,14 @@ public partial class ExplorateurControl : UserControl
     {
         var panneau = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 1, 0, 1) };
 
+        // Extension Material Icon Theme active : icônes vectorielles à la place des emojis et des pastilles
+        if (ExtensionsService.EstActive(ExtensionsService.IdMaterialIcon))
+        {
+            panneau.Children.Add(IconeMaterial(chemin, estDossier));
+            panneau.Children.Add(new TextBlock { Text = texte, VerticalAlignment = VerticalAlignment.Center });
+            return panneau;
+        }
+
         if (estDossier)
         {
             panneau.Children.Add(new TextBlock
@@ -161,6 +180,89 @@ public partial class ExplorateurControl : UserControl
             VerticalAlignment = VerticalAlignment.Center
         });
         return panneau;
+    }
+
+    private static Brush PinceauHex(string hex)
+    {
+        var pinceau = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
+        pinceau.Freeze();
+        return pinceau;
+    }
+
+    private static System.Windows.Shapes.Path Forme(string donnees, Brush? remplissage, Brush? trait, double epaisseur) => new()
+    {
+        Data = Geometry.Parse(donnees),
+        Fill = remplissage,
+        Stroke = trait,
+        StrokeThickness = epaisseur,
+        StrokeLineJoin = PenLineJoin.Round,
+        StrokeStartLineCap = PenLineCap.Round,
+        StrokeEndLineCap = PenLineCap.Round
+    };
+
+    private static string CouleurDossier(string chemin)
+    {
+        var nom = Path.GetFileName(chemin.TrimEnd(Path.DirectorySeparatorChar)).ToLowerInvariant();
+        return nom switch
+        {
+            "src" or "source" or "lib" or "node_modules" => "#8BC34A",
+            "docs" or "doc" or "documentation" => "#42A5F5",
+            "assets" or "images" or "img" or "resources" or "icons" => "#FFCA28",
+            "test" or "tests" or "__tests__" or "spec" => "#26A69A",
+            "config" or ".vscode" or "settings" => "#7E57C2",
+            "controls" or "components" or "views" or "ui" => "#EC407A",
+            "services" or "utils" or "helpers" => "#26C6DA",
+            "models" or "data" => "#FF7043",
+            _ => "#42A5F5"
+        };
+    }
+
+    /// <summary>Icône façon Material Icon Theme : dossier coloré selon son nom, fichier coloré selon son type.</summary>
+    private static FrameworkElement IconeMaterial(string chemin, bool estDossier)
+    {
+        var contenu = new Grid { Width = 16, Height = 16 };
+
+        if (estDossier)
+        {
+            contenu.Children.Add(Forme("M1.5,3.5 H6.3 L7.8,5 H14.5 V12.5 H1.5 Z",
+                PinceauHex(CouleurDossier(chemin)), null, 0));
+        }
+        else
+        {
+            var couleur = PinceauHex(BadgeFichier(chemin).CouleurHex);
+            var blanc = Brushes.White;
+            var blancDoux = PinceauHex("#99FFFFFF");
+
+            contenu.Children.Add(Forme("M3,1.5 H9.5 L13,5 V14.5 H3 Z", couleur, null, 0));
+            contenu.Children.Add(Forme("M9.5,1.5 V5 H13", null, blancDoux, 1));
+
+            var ext = Path.GetExtension(chemin).ToLowerInvariant();
+            var marque = ext switch
+            {
+                ".cs" or ".py" or ".pyw" or ".js" or ".mjs" or ".ts" or ".tsx" or ".java" or ".c" or ".h"
+                    or ".cpp" or ".hpp" or ".php" or ".go" or ".rs" or ".xaml" or ".xml" or ".csproj"
+                    or ".html" or ".htm" or ".css" or ".scss" or ".ps1" or ".bat" or ".cmd" or ".sql"
+                    => "M6.6,8 L4.8,10 L6.6,12 M9.4,8 L11.2,10 L9.4,12",
+                ".json" or ".yml" or ".yaml" or ".config"
+                    => "M6.9,7.6 Q5.9,7.6 5.9,8.6 V9.2 Q5.9,10 5.1,10.3 Q5.9,10.6 5.9,11.4 V12 Q5.9,13 6.9,13 M9.5,7.6 Q10.5,7.6 10.5,8.6 V9.2 Q10.5,10 11.3,10.3 Q10.5,10.6 10.5,11.4 V12 Q10.5,13 9.5,13",
+                ".md" or ".txt" or ".log" or ".csv"
+                    => "M5.2,8.3 H10.8 M5.2,10.3 H10.8 M5.2,12.3 H8.6",
+                ".png" or ".jpg" or ".jpeg" or ".gif" or ".bmp" or ".ico" or ".svg"
+                    => "M5,13 L7.4,9.6 L8.8,11.4 L9.8,10.4 L11.2,13",
+                _ => ""
+            };
+            if (marque.Length > 0)
+                contenu.Children.Add(Forme(marque, null, blanc, 1.1));
+        }
+
+        return new Viewbox
+        {
+            Width = 16,
+            Height = 16,
+            Margin = new Thickness(0, 0, 6, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = contenu
+        };
     }
 
     private static (string Sigle, string CouleurHex) BadgeFichier(string chemin)

@@ -47,4 +47,12 @@ public static class AppEvents
     public static event Action<string, string?, int?>? AideIADemandee;
     public static void DemanderAideIA(string messageErreur, string? chemin = null, int? ligne = null) =>
         AideIADemandee?.Invoke(messageErreur, chemin, ligne);
+
+    // Une extension a été installée, désinstallée, activée ou désactivée (ou une opération démarre / se termine)
+    public static event Action? ExtensionsChangees;
+    public static void SignalerExtensionsChangees() => ExtensionsChangees?.Invoke();
+
+    // La page de détail d'une extension doit être affichée (paramètre : identifiant de l'extension)
+    public static event Action<string>? ExtensionDemandee;
+    public static void DemanderExtension(string id) => ExtensionDemandee?.Invoke(id);
 }
