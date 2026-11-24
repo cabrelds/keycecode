@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -36,6 +37,14 @@ public sealed class MarqueurService : IBackgroundRenderer
     private static readonly Pen _styloAvertissement = CreerStylo(Color.FromRgb(0xCC, 0xA7, 0x00));
     private static readonly Pen _styloInfo = CreerStylo(Color.FromRgb(0x37, 0x94, 0xFF));
 
+    // Error Lens : teinte de la ligne entière et couleur du message en fin de ligne
+    private static readonly Brush _fondErreur = PinceauArgb(0x2E, 0xF1, 0x4C, 0x4C);
+    private static readonly Brush _fondAvertissement = PinceauArgb(0x2E, 0xCC, 0xA7, 0x00);
+    private static readonly Brush _fondInfo = PinceauArgb(0x2E, 0x37, 0x94, 0xFF);
+    private static readonly Brush _texteErreur = PinceauArgb(0xD8, 0xF1, 0x4C, 0x4C);
+    private static readonly Brush _texteAvertissement = PinceauArgb(0xD8, 0xCC, 0xA7, 0x00);
+    private static readonly Brush _texteInfo = PinceauArgb(0xD8, 0x37, 0x94, 0xFF);
+
     public MarqueurService(TextEditor editeur)
     {
         _editeur = editeur;
@@ -62,12 +71,85 @@ public sealed class MarqueurService : IBackgroundRenderer
         _editeur.TextArea.TextView.InvalidateLayer(KnownLayer.Selection);
     }
 
+    /// <summary>Force le redessin (utilisé quand une extension comme Error Lens change d'état).</summary>
+    public void Redessiner() => _editeur.TextArea.TextView.InvalidateLayer(KnownLayer.Selection);
+
+    /// <summary>Error Lens : colore la ligne et écrit le message du diagnostic après la fin de la ligne.</summary>
+    private void DessinerErrorLens(TextView textView, DrawingContext dc)
+    {
+        var doc = _editeur.Document;
+        if (doc == null || doc.TextLength == 0) return;
+
+        // Un seul diagnostic par ligne : le plus grave (Erreur < Avertissement < Information)
+        var parLigne = new Dictionary<int, MarqueurDiagnostic>();
+        foreach (var m in _marqueurs)
+        {
+            var offset = Math.Clamp(m.Debut, 0, doc.TextLength);
+            var numero = doc.GetLineByOffset(offset).LineNumber;
+            if (!parLigne.TryGetValue(numero, out var existant) || m.Severite < existant.Severite)
+                parLigne[numero] = m;
+        }
+
+        var police = new Typeface(_editeur.FontFamily, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
+        var taille = Math.Max(9, _editeur.FontSize * 0.88);
+        var dpi = VisualTreeHelper.GetDpi(textView).PixelsPerDip;
+
+        foreach (var (numero, marqueur) in parLigne)
+        {
+            if (textView.GetVisualLine(numero) == null) continue;
+
+            var ligne = doc.GetLineByNumber(numero);
+            var fond = marqueur.Severite switch
+            {
+                SeveriteDiagnostic.Erreur => _fondErreur,
+                SeveriteDiagnostic.Avertissement => _fondAvertissement,
+                _ => _fondInfo
+            };
+            var couleurTexte = marqueur.Severite switch
+            {
+                SeveriteDiagnostic.Erreur => _texteErreur,
+                SeveriteDiagnostic.Avertissement => _texteAvertissement,
+                _ => _texteInfo
+            };
+
+            foreach (var rect in BackgroundGeometryBuilder.GetRectsForSegment(textView, ligne, true))
+                dc.DrawRectangle(fond, null, rect);
+
+            var message = marqueur.Message.Replace("\r", " ").Replace("\n", " ").Trim();
+            if (message.Length == 0) continue;
+
+            var position = textView.GetVisualPosition(
+                new TextViewPosition(numero, ligne.Length + 1), VisualYPosition.TextTop) - textView.ScrollOffset;
+            var largeur = textView.ActualWidth - (position.X + 28) - 8;
+            if (largeur < 40) continue;
+
+            var texte = new FormattedText(message, CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
+                police, taille, couleurTexte, dpi)
+            {
+                MaxTextWidth = largeur,
+                MaxLineCount = 1,
+                Trimming = TextTrimming.CharacterEllipsis
+            };
+            dc.DrawText(texte, new Point(position.X + 28, position.Y));
+        }
+    }
+
+    private static Brush PinceauArgb(byte a, byte r, byte g, byte b)
+    {
+        var pinceau = new SolidColorBrush(Color.FromArgb(a, r, g, b));
+        pinceau.Freeze();
+        return pinceau;
+    }
+
     public void Draw(TextView textView, DrawingContext drawingContext)
     {
         if (_marqueurs.Count == 0 || !textView.VisualLinesValid) return;
 
         var longueurDoc = _editeur.Document?.TextLength ?? 0;
         if (longueurDoc == 0) return;
+
+        if (ExtensionsService.EstActive(ExtensionsService.IdErrorLens))
+            DessinerErrorLens(textView, drawingContext);
 
         foreach (var marqueur in _marqueurs)
         {

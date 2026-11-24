@@ -26,6 +26,10 @@ public static class ColorationService
     private static readonly Palette _paletteSombre =
         new("#6A9955", "#CE9178", "#569CD6", "#C586C0", "#4EC9B0", "#B5CEA8", "#C586C0", "#9CDCFE");
 
+    // One Dark Pro : palette de l'éditeur Atom
+    private static readonly Palette _paletteOneDark =
+        new("#7F848E", "#98C379", "#C678DD", "#C678DD", "#E5C07B", "#D19A66", "#61AFEF", "#E06C75");
+
     private sealed record Chaine(string Debut, string Fin, bool Multiligne = false, bool Echappement = true);
     private sealed record Regle(string Couleur, string Expression);
 
@@ -285,7 +289,11 @@ public static class ColorationService
             return HighlightingManager.Instance.GetDefinitionByExtension(extension);
 
         var sombre = string.Equals(ThemeManager.ThemeActuel, "Sombre", StringComparison.OrdinalIgnoreCase);
-        var cle = langage.Nom + (sombre ? "|sombre" : "|clair");
+        var oneDark = sombre && ThemeManager.Variante == "OneDarkPro";
+        var commentairesColores = ExtensionsService.EstActive(ExtensionsService.IdBetterComments);
+        var cle = langage.Nom
+                  + (sombre ? (oneDark ? "|onedark" : "|sombre") : "|clair")
+                  + (commentairesColores ? "|bc" : "");
 
         lock (_verrouCache)
         {
@@ -295,7 +303,8 @@ public static class ColorationService
         IHighlightingDefinition? definition;
         try
         {
-            var xshd = ConstruireXshd(langage, sombre ? _paletteSombre : _paletteClair);
+            var palette = !sombre ? _paletteClair : oneDark ? _paletteOneDark : _paletteSombre;
+            var xshd = ConstruireXshd(langage, palette, commentairesColores);
             using var lecteur = XmlReader.Create(new StringReader(xshd));
             definition = HighlightingLoader.Load(lecteur, HighlightingManager.Instance);
         }
@@ -313,7 +322,7 @@ public static class ColorationService
 
     private static string Echapper(string texte) => SecurityElement.Escape(texte) ?? "";
 
-    private static string ConstruireXshd(Langage langage, Palette palette)
+    private static string ConstruireXshd(Langage langage, Palette palette, bool commentairesColores)
     {
         var sb = new StringBuilder();
         sb.Append("<SyntaxDefinition name=\"").Append(Echapper(langage.Nom))
@@ -329,6 +338,11 @@ public static class ColorationService
         AjouterCouleur(sb, "Variable", palette.Variable);
         AjouterCouleur(sb, "Tag", palette.MotCle);
         AjouterCouleur(sb, "Attribut", palette.Variable);
+        AjouterCouleur(sb, "CommentaireAlerte", "#FF2D00");
+        AjouterCouleur(sb, "CommentaireQuestion", "#3498DB");
+        AjouterCouleur(sb, "CommentaireTodo", "#FF8C00");
+        AjouterCouleur(sb, "CommentaireInfo", "#3E9B4F");
+        AjouterCouleur(sb, "CommentaireBarre", "#7A7A7A");
 
         sb.Append(langage.IgnorerCasse ? "<RuleSet ignoreCase=\"true\">" : "<RuleSet>");
 
@@ -340,6 +354,9 @@ public static class ColorationService
         {
             if (langage.CommentaireBloc is { } bloc)
                 AjouterSpan(sb, "Commentaire", bloc.Debut, bloc.Fin, multiligne: true, echappement: false);
+
+            if (commentairesColores)
+                AjouterCommentairesColores(sb, langage);
 
             foreach (var debut in langage.CommentairesLigne)
                 sb.Append("<Span color=\"Commentaire\" begin=\"").Append(Echapper(debut)).Append("\"/>");
@@ -384,6 +401,30 @@ public static class ColorationService
         foreach (var mot in mots)
             sb.Append("<Word>").Append(Echapper(mot)).Append("</Word>");
         sb.Append("</Keywords>");
+    }
+
+    // Better Comments : annotation placée juste après le symbole de commentaire (le '#' est déjà échappé par le langage)
+    private static readonly (string Couleur, string Motif)[] _annotations =
+    [
+        ("CommentaireAlerte", @"!"),
+        ("CommentaireQuestion", @"\?"),
+        ("CommentaireTodo", @"(?:TODO|FIXME)\b"),
+        ("CommentaireInfo", @"\*"),
+        ("CommentaireBarre", @"//"),
+    ];
+
+    private static void AjouterCommentairesColores(StringBuilder sb, Langage langage)
+    {
+        foreach (var prefixe in langage.CommentairesLigne)
+        {
+            if (prefixe.StartsWith('^')) continue; // règle ancrée (ex. REM en Batch) : ignorée
+
+            foreach (var (couleur, motif) in _annotations)
+            {
+                sb.Append("<Span color=\"").Append(couleur).Append("\" begin=\"")
+                  .Append(Echapper(prefixe + @"[ \t]*" + motif)).Append("\"/>");
+            }
+        }
     }
 
     private static void AjouterMarkup(StringBuilder sb)
