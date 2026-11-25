@@ -120,10 +120,11 @@ public partial class ExtensionsControl : UserControl
         menu.Items.Add(ExtensionUi.ItemMenu("Activé", () => DefinirRecherche("@enabled")));
         menu.Items.Add(ExtensionUi.ItemMenu("Désactivé", () => DefinirRecherche("@disabled")));
         menu.Items.Add(ExtensionUi.ItemMenu("Recommandées", () => DefinirRecherche("@recommended")));
+        menu.Items.Add(ExtensionUi.ItemMenu("Prises en charge par KeyCode", () => DefinirRecherche("@supported")));
         menu.Items.Add(new Separator());
 
         var categories = new MenuItem { Header = "Catégories" };
-        foreach (var categorie in new[] { "Themes", "Programming Languages", "Other" })
+        foreach (var categorie in new[] { "Themes", "Programming Languages", "Debuggers", "Formatters", "Linters", "Snippets", "Testing", "Data Science", "Visualization", "AI", "Other" })
         {
             var nom = categorie;
             categories.Items.Add(ExtensionUi.ItemMenu(nom, () => DefinirRecherche($"@category:\"{nom.ToLowerInvariant()}\"")));
@@ -251,6 +252,9 @@ public partial class ExtensionsControl : UserControl
             Background = Brushes.Transparent,
             Opacity = installee && !active ? 0.6 : 1
         };
+
+        if (!info.PriseEnCharge)
+            racine.ToolTip = "Cette extension n'est pas encore prise en charge par KeyCode : l'installer ne change rien.";
 
         var grille = new Grid { Margin = new Thickness(15, 0, 10, 0) };
         grille.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });

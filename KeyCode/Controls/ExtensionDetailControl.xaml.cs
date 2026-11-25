@@ -45,7 +45,19 @@ public partial class ExtensionDetailControl : UserControl
         _onglet = "details";
 
         TitreOnglet.Text = "Extension : " + info.Nom;
-        NomExtension.Text = info.Nom;
+        NomExtension.Inlines.Clear();
+        NomExtension.Inlines.Add(new System.Windows.Documents.Run(info.Nom));
+        if (info.Integree)
+        {
+            var etiquette = new System.Windows.Documents.Run("  Intégrée")
+            {
+                FontSize = 13,
+                FontStyle = FontStyles.Italic,
+                BaselineAlignment = BaselineAlignment.Top
+            };
+            etiquette.SetResourceReference(System.Windows.Documents.TextElement.ForegroundProperty, "ThemeTexteSecondaire");
+            NomExtension.Inlines.Add(etiquette);
+        }
         DescriptionExtension.Text = info.Description;
         IconeGrande.Content = ExtensionUi.Icone(id, 128);
 
@@ -71,7 +83,7 @@ public partial class ExtensionDetailControl : UserControl
     /// <summary>Reconstruit les parties qui dépendent de l'état (boutons et colonne d'informations).</summary>
     private void RafraichirEtat(ExtensionInfo info)
     {
-        ConstruireActions(info);
+        ConstruireActionsRiche(info);
         ConstruireLateral(info);
     }
 
@@ -101,6 +113,13 @@ public partial class ExtensionDetailControl : UserControl
         LigneMeta.Children.Clear();
 
         LigneMeta.Children.Add(ExtensionUi.Texte(info.Editeur, 15, "ThemeTexte"));
+        if (!string.IsNullOrEmpty(info.Domaine))
+        {
+            var verifie = ExtensionUi.Verifie(16);
+            verifie.Margin = new Thickness(6, 0, 0, 0);
+            LigneMeta.Children.Add(verifie);
+            LigneMeta.Children.Add(LienTexte(info.Domaine, "https://" + info.Domaine, 15, new Thickness(5, 0, 0, 0)));
+        }
         LigneMeta.Children.Add(Separateur());
 
         var nuage = ExtensionUi.Pictogramme(ExtensionUi.DonneesNuage, "ThemeTexteSecondaire", 17, 1.1);
@@ -256,9 +275,8 @@ public partial class ExtensionDetailControl : UserControl
     private void ConstruireNavigation(ExtensionInfo info)
     {
         Navigation.Children.Clear();
-        AjouterOnglet(info, "DÉTAILS", "details");
-        AjouterOnglet(info, "FONCTIONNALITÉS", "fonctionnalites");
-        AjouterOnglet(info, "JOURNAL DES MODIFICATIONS", "journal");
+        foreach (var cle in info.Onglets)
+            AjouterOnglet(info, LibelleOnglet(cle), cle);
     }
 
     private void AjouterOnglet(ExtensionInfo info, string titre, string cle)
@@ -300,11 +318,14 @@ public partial class ExtensionDetailControl : UserControl
     private void ConstruireContenu(ExtensionInfo info)
     {
         Contenu.Children.Clear();
+        if (!info.PriseEnCharge) Contenu.Children.Add(BandeauNonSupportee());
         switch (_onglet)
         {
             case "fonctionnalites": ConstruireFonctionnalites(info); break;
             case "journal": ConstruireJournal(info); break;
-            default: ConstruireDetails(info); break;
+            case "dependances":
+            case "pack": Contenu.Children.Add(BlocPack(info)); break;
+            default: ConstruireDetailsRiche(info); break;
         }
     }
 
@@ -355,6 +376,24 @@ public partial class ExtensionDetailControl : UserControl
             Contenu.Children.Add(Titre2(parties[0], Contenu.Children.Count == 0 ? 0 : 22));
             if (parties.Length > 1) Contenu.Children.Add(Puce(parties[1]));
         }
+    }
+
+    private static UIElement BandeauNonSupportee()
+    {
+        var texte = ExtensionUi.Texte(
+            "Cette extension n'est pas encore prise en charge par KeyCode : elle s'affiche comme dans VS Code, mais l'installer ne change rien au comportement de l'éditeur.",
+            13, "ThemeTexte");
+        texte.TextWrapping = TextWrapping.Wrap;
+
+        var bandeau = new Border
+        {
+            BorderThickness = new Thickness(3, 0, 0, 0),
+            Padding = new Thickness(12, 8, 12, 8),
+            Margin = new Thickness(0, 0, 0, 16),
+            Child = texte
+        };
+        ExtensionUi.Ref(bandeau, Border.BackgroundProperty, "ThemeFondSecondaire");
+        return ExtensionUi.Ref(bandeau, Border.BorderBrushProperty, "ThemeAvertissement");
     }
 
     private static UIElement Titre1(string texte)
@@ -492,7 +531,8 @@ public partial class ExtensionDetailControl : UserControl
 
         Lateral.Children.Add(SectionTitre("Catégories", false));
         var categories = new WrapPanel();
-        categories.Children.Add(Pastille(info.Categorie));
+        foreach (var categorie in info.ToutesCategories)
+            categories.Children.Add(Pastille(categorie));
         Lateral.Children.Add(categories);
 
         Lateral.Children.Add(SectionTitre("Ressources", false));
@@ -530,11 +570,13 @@ public partial class ExtensionDetailControl : UserControl
             if (i % 2 == 0) ExtensionUi.Ref(ligne, Border.BackgroundProperty, "ThemeFondSecondaire");
 
             var grille = new Grid();
-            grille.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(130) });
+            grille.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(78) });
             grille.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
             var etiquette = ExtensionUi.Texte(libelle, 13, "ThemeTexte");
-            etiquette.TextWrapping = TextWrapping.Wrap;
+            etiquette.TextWrapping = libelle.Contains(' ') ? TextWrapping.Wrap : TextWrapping.NoWrap;
+            etiquette.TextTrimming = TextTrimming.CharacterEllipsis;
+            etiquette.MaxHeight = 36;
             etiquette.VerticalAlignment = VerticalAlignment.Top;
 
             var contenu = ExtensionUi.Texte(valeur, mono ? 11.5 : 12.5, lien ? "ThemeLien" : "ThemeTexte");
@@ -579,6 +621,8 @@ public partial class ExtensionDetailControl : UserControl
         ligne.Children.Add(pictogramme);
 
         var libelle = ExtensionUi.Texte(texte, 13, "ThemeLien", null, new Thickness(8, 0, 0, 0));
+        libelle.TextTrimming = TextTrimming.CharacterEllipsis;
+        libelle.MaxWidth = 190;
         ligne.Children.Add(libelle);
 
         ligne.MouseEnter += (_, _) => libelle.TextDecorations = TextDecorations.Underline;

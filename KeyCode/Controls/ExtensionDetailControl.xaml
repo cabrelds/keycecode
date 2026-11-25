@@ -43,10 +43,10 @@
             <StackPanel Grid.Column="1">
                 <TextBlock x:Name="NomExtension" FontSize="26"
                            Foreground="{DynamicResource ThemeTexte}" TextTrimming="CharacterEllipsis"/>
-                <StackPanel x:Name="LigneMeta" Orientation="Horizontal" Margin="0,6,0,0"/>
+                <WrapPanel x:Name="LigneMeta" Margin="0,6,0,0"/>
                 <TextBlock x:Name="DescriptionExtension" FontSize="14" TextWrapping="Wrap" Margin="0,8,0,0"
                            Foreground="{DynamicResource ThemeTexte}"/>
-                <StackPanel x:Name="ZoneActions" Orientation="Horizontal" Margin="0,14,0,0"/>
+                <WrapPanel x:Name="ZoneActions" Margin="0,14,0,0"/>
             </StackPanel>
         </Grid>
 

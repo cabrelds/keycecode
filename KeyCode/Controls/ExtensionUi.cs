@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using KeyCode.Services;
 using Chemin = System.Windows.Shapes.Path;
@@ -133,8 +134,50 @@ public static class ExtensionUi
     }
 
     /// <summary>Icône vectorielle d'une extension, dans un carré de taille donnée.</summary>
+    private static readonly Dictionary<string, ImageSource?> _imagesIcones = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Logo PNG de l'extension, déposé dans Assets/Extensions/&lt;identifiant&gt;.png (null si absent).</summary>
+    private static FrameworkElement? IconePng(string id, double taille)
+    {
+        if (!_imagesIcones.TryGetValue(id, out var source))
+        {
+            try
+            {
+                var image = new BitmapImage();
+                image.BeginInit();
+                image.UriSource = new Uri($"pack://application:,,,/Assets/Extensions/{id}.png", UriKind.Absolute);
+                image.CacheOption = BitmapCacheOption.OnLoad;
+                image.EndInit();
+                image.Freeze();
+                source = image;
+            }
+            catch (Exception)
+            {
+                source = null;
+            }
+            _imagesIcones[id] = source;
+        }
+
+        if (source == null) return null;
+        var vue = new Image { Source = source, Width = taille, Height = taille, Stretch = Stretch.Uniform };
+        RenderOptions.SetBitmapScalingMode(vue, BitmapScalingMode.HighQuality);
+        return vue;
+    }
+
+    /// <summary>Pastille bleue « éditeur vérifié ».</summary>
+    public static FrameworkElement Verifie(double taille)
+    {
+        var contenu = new Grid { Width = 16, Height = 16 };
+        contenu.Children.Add(Trace("M8,1 A7,7 0 1 0 8,15 A7,7 0 1 0 8,1 Z", Hex("#3794FF"), null, 0));
+        contenu.Children.Add(Trace("M4.8,8.2 L7,10.4 L11.2,5.8", null, Brushes.White, 1.8));
+        return new Viewbox { Width = taille, Height = taille, Child = contenu, VerticalAlignment = VerticalAlignment.Center };
+    }
+
     public static FrameworkElement Icone(string id, double taille)
     {
+        var png = IconePng(id, taille);
+        if (png != null) return png;
+
         var canvas = new Canvas { Width = 100, Height = 100 };
 
         switch (id)
@@ -213,8 +256,35 @@ public static class ExtensionUi
                 break;
 
             default:
-                canvas.Children.Add(new Rectangle { Width = 100, Height = 100, RadiusX = 18, RadiusY = 18, Fill = Hex("#6C6C6C") });
+            {
+                var nomComplet = ExtensionsService.Obtenir(id)?.Nom ?? id;
+                var mots = nomComplet.Split(new[] { ' ', '-', '.' }, StringSplitOptions.RemoveEmptyEntries);
+                var initiales = mots.Length >= 2
+                    ? (mots[0][..1] + mots[1][..1]).ToUpperInvariant()
+                    : nomComplet[..Math.Min(2, nomComplet.Length)].ToUpperInvariant();
+
+                var palette = new[] { "#3B82F6", "#8B5CF6", "#EC4899", "#F97316", "#10B981", "#06B6D4", "#EAB308", "#EF4444" };
+                var somme = 0;
+                foreach (var c in id) somme += c;
+
+                canvas.Children.Add(new Rectangle
+                {
+                    Width = 100, Height = 100, RadiusX = 20, RadiusY = 20,
+                    Fill = Hex(palette[somme % palette.Length])
+                });
+                var lettres = new TextBlock
+                {
+                    Text = initiales,
+                    Width = 100,
+                    TextAlignment = TextAlignment.Center,
+                    FontSize = 42,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = Brushes.White
+                };
+                Canvas.SetTop(lettres, 26);
+                canvas.Children.Add(lettres);
                 break;
+            }
         }
 
         return new Viewbox { Width = taille, Height = taille, Stretch = Stretch.Uniform, Child = canvas };
