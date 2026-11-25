@@ -23,7 +23,7 @@ public static class GeminiService
     private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(75) };
 
     private const string PromptSysteme =
-        "Tu es l'assistant IA intégré à l'éditeur de code KeyCode (style VS Code, en C# WPF .NET 10). " +
+        "Tu es l'assistant IA intégré à l'éditeur de code KeyceCode (style VS Code, en C# WPF .NET 10). " +
         "Réponds en français de façon claire, structurée et concise. " +
         "Lorsque tu fournis du code, mets-le dans un bloc Markdown ```langage ... ``` propre et prêt à être inséré directement dans l'éditeur.";
 

@@ -103,7 +103,7 @@
                         CornerRadius="6" Padding="10" Margin="0,0,0,8">
                     <TextBlock TextWrapping="Wrap" FontSize="12"
                                Foreground="{DynamicResource ThemeTexte}"
-                               Text="Bonjour ! Je suis ton assistant Gemini intégré à KeyCode. Pose-moi une question, sélectionne du code ou clique sur « Corriger erreurs » pour analyser et insérer du code en un clic."/>
+                               Text="Bonjour ! Je suis ton assistant Gemini intégré à KeyceCode. Pose-moi une question, sélectionne du code ou clique sur « Corriger erreurs » pour analyser et insérer du code en un clic."/>
                 </Border>
             </StackPanel>
         </ScrollViewer>

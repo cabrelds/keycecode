@@ -1,21 +1,21 @@
-# Guide d'utilisation et de tests — KeyCode IDE 2.0
+# Guide d'utilisation et de tests — KeyceCode IDE 2.0
 
-Bienvenue dans **KeyCode IDE 2.0**, l'éditeur de code en C# (WPF, .NET 10, AvalonEdit) inspiré de **Visual Studio Code** et enrichi avec **Google Gemini AI**.
+Bienvenue dans **KeyceCode IDE 2.0**, l'éditeur de code en C# (WPF, .NET 10, AvalonEdit) inspiré de **Visual Studio Code**, doté d'une **Place de marché d'extensions** et enrichi avec **Google Gemini AI**.
 
 ---
 
-## 1. Installation sur Windows (`KeyCodeSetup.exe`)
+## 1. Installation sur Windows (`KeyceCodeSetup.exe` / `KeyCodeSetup.exe`)
 
 ### Option A — Via l'installateur graphique Windows (recommandé)
-1. Exécutez `powershell -ExecutionPolicy Bypass -File installer\construire-setup.ps1` depuis la racine du dépôt (ou utilisez l'exécutable généré dans `installer\dist\KeyCodeSetup.exe`).
-2. Dans l'assistant **Installation — KeyCode IDE 2.0** :
-   - Choisissez le dossier d'installation (par défaut `%LocalAppData%\Programs\KeyCode`).
+1. Exécutez `powershell -ExecutionPolicy Bypass -File installer\construire-setup.ps1` depuis la racine du dépôt (ou utilisez l'exécutable généré dans `installer\dist\KeyceCodeSetup.exe`).
+2. Dans l'assistant **Installation — KeyceCode IDE 2.0** :
+   - Choisissez le dossier d'installation (par défaut `%LocalAppData%\Programs\KeyceCode`).
    - Cochez les options souhaitées :
-     - Raccourci sur le Bureau Windows
+     - Raccourci sur le Bureau Windows (`KeyceCode.lnk`)
      - Raccourci dans le Menu Démarrer
-     - Intégration au menu contextuel Windows (**« Ouvrir avec KeyCode »** sur les fichiers et dossiers)
-   - Cliquez sur **Installer**, puis sur **Terminer** (avec l'option **Lancer KeyCode maintenant**).
-3. Pour désinstaller proprement à tout moment : ouvrez **Paramètres Windows > Applications > Applications installées > KeyCode IDE** ou exécutez `Desinstaller-KeyCode.cmd` dans le dossier d'installation.
+     - Intégration au menu contextuel Windows (**« Ouvrir avec KeyceCode »** sur les fichiers et dossiers)
+   - Cliquez sur **Installer**, puis sur **Terminer** (avec l'option **Lancer KeyceCode maintenant**).
+3. Pour désinstaller proprement à tout moment : ouvrez **Paramètres Windows > Applications > Applications installées > KeyceCode IDE** ou exécutez `Desinstaller-KeyceCode.cmd` dans le dossier d'installation.
 
 ### Option B — Depuis le code source (.NET 10 SDK)
 ```powershell
@@ -33,8 +33,9 @@ dotnet run
    - Menus **Fichier**, **Édition**, **Affichage**, **Exécuter**, **Gemini AI**, **Aide**.
    - Barre centrale **Accès rapide** (`Ctrl+P`) pour ouvrir instantanément n'importe quel fichier du projet.
 2. **Barre d'activité (à gauche)** :
-   - **Explorateur** (`Ctrl+Maj+E`) : arborescence du dossier avec badges par extension, création de fichier/dossier, renommage, suppression et actualisation sans perdre les dossiers ouverts.
+   - **Explorateur** (`Ctrl+Maj+E`) : arborescence du dossier avec badges par extension (ou icônes vectorielles **Material Icon Theme**), création de fichier/dossier, renommage, suppression et actualisation sans perdre les dossiers ouverts.
    - **Rechercher** (`Ctrl+Maj+F`) : recherche globale multi-fichiers avec ouverture directe à la ligne cliquée.
+   - **Extensions** (`Ctrl+Maj+X`) : Place de marché intégrée de 27 extensions (dont **Material Icon Theme**, **One Dark Pro**, **Error Lens**, **Better Comments**, **Code Runner**, **Prettier**, **Live Server**, **indent-rainbow**, **Trailing Spaces**, **Color Highlight**) avec fiches détaillées, filtres (`@installed`, `@enabled`, `@supported`, `@category:...`) et activation instantanée.
    - **Exécuter** (`F5`) : exécute le programme ou ouvre l'aperçu navigateur selon le fichier actif.
    - **Problèmes & Terminal** (`Ctrl+J`) : ouvre le panneau inférieur à 3 onglets (**PROBLÈMES**, **EXÉCUTION**, **TERMINAL**).
    - **Gemini AI** (`Ctrl+Alt+I`) : ouvre le panneau latéral droit de l'assistant IA Google Gemini.

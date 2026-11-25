@@ -123,9 +123,11 @@ public partial class MainWindow : Window
             new("Fichier : Tout enregistrer", "Ctrl+Maj+S", () => Onglets.EnregistrerTout()),
             new("Fichier : Fermer l'onglet", "Ctrl+W", () => Onglets.FermerOngletActif()),
             new("Fichier : Rouvrir l'onglet fermé", "Ctrl+Maj+T", () => Onglets.RouvrirDernierOngletFerme()),
-            new("Affichage : Thème Sombre+ (VS Code)", "", () => ChangerTheme("Sombre")),
+            new("Affichage : Thème Sombre+ (VS Code)", "", () => ChangerTheme("Sombre", "")),
             new("Affichage : Thème Clair+ (VS Code)", "", () => ChangerTheme("Clair")),
+            new("Affichage : Thème One Dark Pro", "", AppliquerOneDarkPro),
             new("Affichage : Afficher / Masquer l'explorateur", "Ctrl+Maj+E", BasculerExplorateur),
+            new("Affichage : Ouvrir la Place de marché d'Extensions", "Ctrl+Maj+X", () => AfficherExtensions()),
             new("Affichage : Afficher / Masquer le terminal", "Ctrl+J", BasculerTerminal),
             new("Affichage : Afficher / Masquer Gemini AI", "Ctrl+Alt+I", () => AfficherPanneauIA(AssistantIA.Visibility != Visibility.Visible)),
             new("Affichage : Zoom +", "", () => ChangerTaille(SettingsService.TaillePolice + 2)),
@@ -135,7 +137,9 @@ public partial class MainWindow : Window
             new("Édition : Remplacer dans le fichier", "Ctrl+H", () => Recherche.Afficher(true)),
             new("Édition : Aller à la ligne...", "Ctrl+G", () => { if (Contexte.EditeurActif != null) Recherche.AfficherAllerALigne(); }),
             new("Édition : Rechercher dans les fichiers", "Ctrl+Maj+F", AfficherRechercheFichiers),
+            new("Édition : Supprimer les espaces en fin de ligne", "", SupprimerEspacesFinDeLigne),
             new("Exécuter : Lancer le fichier actif", "F5", ExecuterFichier),
+            new("Code Runner : Exécuter la sélection ou le fichier", "Ctrl+Alt+N", ExecuterCode),
             new("Exécuter : Arrêter l'exécution", "", () => Terminal.Arreter()),
             new("Live Server : Démarrer / arrêter (Go Live)", "", BasculerLiveServer),
             new("Prettier : Formater le document", "Maj+Alt+F", FormaterDocument),
@@ -471,7 +475,10 @@ public partial class MainWindow : Window
         var comboTheme = new ComboBox { Margin = new Thickness(0, 0, 0, 12) };
         comboTheme.Items.Add("Sombre");
         comboTheme.Items.Add("Clair");
-        comboTheme.SelectedItem = ThemeManager.ThemeActuel;
+        comboTheme.Items.Add("One Dark Pro");
+        comboTheme.SelectedItem = ThemeManager.ThemeActuel == "Clair"
+            ? "Clair"
+            : ThemeManager.Variante == "OneDarkPro" ? "One Dark Pro" : "Sombre";
         panel.Children.Add(comboTheme);
 
         panel.Children.Add(new TextBlock { Text = "Taille de la police (8 à 48) :", FontWeight = FontWeights.SemiBold, Foreground = ThemeManager.Pinceau("ThemeTexte"), Margin = new Thickness(0, 0, 0, 4) });
@@ -504,7 +511,7 @@ public partial class MainWindow : Window
 
         var fen = new Window
         {
-            Title = "Paramètres - KeyCode",
+            Title = "Paramètres - KeyceCode",
             Content = panel,
             Width = 420,
             SizeToContent = SizeToContent.Height,
@@ -517,7 +524,11 @@ public partial class MainWindow : Window
 
         btnOk.Click += (_, _) =>
         {
-            if (comboTheme.SelectedItem is string th) ChangerTheme(th);
+            if (comboTheme.SelectedItem is string th)
+            {
+                if (th == "One Dark Pro") AppliquerOneDarkPro();
+                else ChangerTheme(th, "");
+            }
             if (double.TryParse(champPolice.Text, out var taille)) ChangerTaille(taille);
             SettingsService.CleApiGemini = champCle.Text.Trim();
             if (comboModele.SelectedItem is string mod) SettingsService.ModeleGemini = mod;
@@ -633,14 +644,25 @@ public partial class MainWindow : Window
 
         if (resultat == null)
         {
-            MessageBox.Show("Prettier prend en charge les fichiers enregistrés en .json, .xml, .xaml, .csproj, .svg...",
-                "Prettier");
+            MessageBox.Show("Prettier prend en charge les fichiers enregistrés (.json, .xml, .xaml, .html, .css, .cs, .js, .ts, .py, .md...).",
+                "Prettier - KeyceCode");
             return;
         }
 
         if (resultat == editeur.Text) return;
         var position = editeur.CaretOffset;
         editeur.Document.Replace(0, editeur.Document.TextLength, resultat);
+        editeur.CaretOffset = Math.Min(position, editeur.Document.TextLength);
+    }
+
+    private void SupprimerEspacesFinDeLigne()
+    {
+        var editeur = Contexte.EditeurActif;
+        if (editeur == null) return;
+        var propre = FormateurService.NettoyerLignes(editeur.Text);
+        if (propre == editeur.Text) return;
+        var position = editeur.CaretOffset;
+        editeur.Document.Replace(0, editeur.Document.TextLength, propre);
         editeur.CaretOffset = Math.Min(position, editeur.Document.TextLength);
     }
 
@@ -791,19 +813,22 @@ public partial class MainWindow : Window
             "Ctrl+P / Ctrl+Maj+P : accès rapide / palette de commandes\n" +
             "Ctrl+F / Ctrl+H / Ctrl+G : rechercher / remplacer / aller à la ligne\n" +
             "Ctrl+Maj+F : rechercher dans tout le projet\n" +
+            "Ctrl+Maj+X : ouvrir la Place de marché d'extensions\n" +
+            "Maj+Alt+F : formater le document (Prettier)\n" +
+            "Ctrl+Alt+N : exécuter la sélection (Code Runner)\n" +
             "Ctrl+/ : commenter / décommenter   |   Alt+↑/↓ : déplacer ligne\n" +
             "Ctrl+Espace : auto-complétion   |   Ctrl+Molette : zoom\n" +
             "Ctrl+Maj+E : explorateur   |   Ctrl+J : panneau bas   |   Ctrl+Alt+I : Gemini AI\n" +
             "F5 : exécuter le fichier actif",
-            "Raccourcis clavier - KeyCode");
+            "Raccourcis clavier - KeyceCode");
     }
 
     private void APropos_Click(object sender, RoutedEventArgs e)
     {
         MessageBox.Show(
-            "KeyCode IDE v2.0\nÉditeur de code en C# (WPF, .NET 10, AvalonEdit) avec assistant IA Gemini.\n\n" +
+            "KeyceCode IDE v2.0\nÉditeur de code en C# (WPF, .NET 10, AvalonEdit) avec Place de marché d'extensions et assistant IA Gemini.\n\n" +
             "Équipe : cabrelds, erwan-rk, DeboraQueen237, morelbrad27-lab, nyangono.",
-            "À propos de KeyCode");
+            "À propos de KeyceCode");
     }
 
     // ------------------------------------------------------------------
@@ -906,8 +931,8 @@ public partial class MainWindow : Window
     {
         var nom = Contexte.CheminActif == null ? "Sans titre" : Path.GetFileName(Contexte.CheminActif);
         Title = Contexte.DossierRacine == null
-            ? $"{nom} - KeyCode"
-            : $"{nom} - {Path.GetFileName(Contexte.DossierRacine)} - KeyCode";
+            ? $"{nom} - KeyceCode"
+            : $"{nom} - {Path.GetFileName(Contexte.DossierRacine)} - KeyceCode";
 
         StatutDossier.Text = string.IsNullOrWhiteSpace(Contexte.DossierRacine)
             ? "Aucun dossier"

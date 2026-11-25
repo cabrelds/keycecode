@@ -1,4 +1,4 @@
-﻿param(
+param(
     [ValidateSet("Autonome", "Compact")]
     [string]$Mode = "Compact",
     [string]$Configuration = "Release"
@@ -62,10 +62,12 @@ if ($LASTEXITCODE -ne 0) { throw "Échec de dotnet publish pour KeyCodeSetup." }
 
 $ExeGenere = Join-Path $SetupPubDir "KeyCodeSetup.exe"
 $ExeFinal = Join-Path $DistDir "KeyCodeSetup.exe"
+$ExeFinalKeyce = Join-Path $DistDir "KeyceCodeSetup.exe"
 Copy-Item $ExeGenere $ExeFinal -Force
+Copy-Item $ExeGenere $ExeFinalKeyce -Force
 
 Write-Output ""
-Write-Output ("Installateur prêt : {0} ({1:N2} Mo)" -f $ExeFinal, ((Get-Item $ExeFinal).Length / 1MB))
+Write-Output ("Installateur prêt : {0} et {1} ({2:N2} Mo)" -f $ExeFinal, $ExeFinalKeyce, ((Get-Item $ExeFinalKeyce).Length / 1MB))
 
 # Si Inno Setup (ISCC.exe) est disponible, génère aussi l'installateur Inno Setup
 $Iscc = Get-Command "ISCC.exe" -ErrorAction SilentlyContinue
