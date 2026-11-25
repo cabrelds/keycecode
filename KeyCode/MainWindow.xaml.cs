@@ -40,6 +40,14 @@ public partial class MainWindow : Window
 
         InitializeComponent();
 
+        // La fenêtre ne doit jamais dépasser la zone utile de l'écran (sinon la barre d'état est coupée)
+        var zone = SystemParameters.WorkArea;
+        Height = Math.Min(Height, zone.Height);
+        Width = Math.Min(Width, zone.Width);
+        WindowStartupLocation = WindowStartupLocation.Manual;
+        Top = zone.Top + (zone.Height - Height) / 2;
+        Left = zone.Left + (zone.Width - Width) / 2;
+
         ColonneGauche.Width = new GridLength(_largeurGauche);
         LigneBas.Height = new GridLength(_hauteurBas);
         if (SettingsService.PanneauIAVisible)
@@ -129,6 +137,8 @@ public partial class MainWindow : Window
             new("Édition : Rechercher dans les fichiers", "Ctrl+Maj+F", AfficherRechercheFichiers),
             new("Exécuter : Lancer le fichier actif", "F5", ExecuterFichier),
             new("Exécuter : Arrêter l'exécution", "", () => Terminal.Arreter()),
+            new("Live Server : Démarrer / arrêter (Go Live)", "", BasculerLiveServer),
+            new("Prettier : Formater le document", "Maj+Alt+F", FormaterDocument),
             new("Terminal : Ouvrir PowerShell interactif", "", OuvrirShell),
             new("Problèmes : Afficher la liste des erreurs", "", OuvrirProblemes),
             new("Gemini AI : Expliquer le fichier actif", "", () => ExpliquerIA_Click(this, new RoutedEventArgs())),
@@ -649,8 +659,17 @@ public partial class MainWindow : Window
             return;
         }
 
-        var racine = Contexte.DossierRacine
-                     ?? (Contexte.CheminActif != null ? Path.GetDirectoryName(Contexte.CheminActif) : null);
+        var racine = Contexte.DossierRacine;
+        var courant = Contexte.CheminActif;
+
+        // Fichier ouvert hors du dossier de l'explorateur : on sert le dossier du fichier
+        if (courant != null && !string.IsNullOrEmpty(racine))
+        {
+            var prefixe = Path.GetFullPath(racine).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            if (!Path.GetFullPath(courant).StartsWith(prefixe, StringComparison.OrdinalIgnoreCase))
+                racine = Path.GetDirectoryName(courant);
+        }
+        racine ??= courant != null ? Path.GetDirectoryName(courant) : null;
         if (string.IsNullOrEmpty(racine))
         {
             MessageBox.Show("Ouvrez un dossier (ou enregistrez un fichier HTML) avant de lancer Live Server.", "Live Server");
