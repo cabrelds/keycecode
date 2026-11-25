@@ -541,6 +541,7 @@ public partial class MainWindow : Window
                 FermerDetailExtension();
         };
         DetailExtension.DemandeFermeture += FermerDetailExtension;
+        LiveServerService.EtatChange += () => Dispatcher.InvokeAsync(MettreAJourMenuCodeRunner);
 
         MettreAJourBadgeExtensions();
         MettreAJourMenuCodeRunner();
@@ -574,10 +575,100 @@ public partial class MainWindow : Window
         }
     }
 
-    private void MettreAJourMenuCodeRunner() =>
+    /// <summary>
+    /// Met à jour les éléments qui dépendent d'une extension : menu Code Runner, menu Prettier, bouton Go Live.
+    /// Arrête Live Server si son extension est désactivée. (Nom historique de la méthode.)
+    /// </summary>
+    private void MettreAJourMenuCodeRunner()
+    {
         MenuCodeRunner.Visibility = ExtensionsService.EstActive(ExtensionsService.IdCodeRunner)
-            ? Visibility.Visible
-            : Visibility.Collapsed;
+            ? Visibility.Visible : Visibility.Collapsed;
+        MenuPrettier.Visibility = ExtensionsService.EstActive(ExtensionsService.IdPrettier)
+            ? Visibility.Visible : Visibility.Collapsed;
+
+        var live = ExtensionsService.EstActive(ExtensionsService.IdLiveServer);
+        if (!live && LiveServerService.EnCours) LiveServerService.Arreter();
+
+        BoutonGoLive.Visibility = live ? Visibility.Visible : Visibility.Collapsed;
+        BoutonGoLive.Content = LiveServerService.EnCours ? $"⏻ Port : {LiveServerService.Port}" : "◉ Go Live";
+        BoutonGoLive.ToolTip = LiveServerService.EnCours ? "Arrêter Live Server" : "Démarrer Live Server";
+    }
+
+    private void Formater_Click(object sender, RoutedEventArgs e) => FormaterDocument();
+    private void GoLive_Click(object sender, RoutedEventArgs e) => BasculerLiveServer();
+
+    /// <summary>Prettier : formate le document actif (JSON ou famille XML). Sans l'extension, ouvre sa fiche.</summary>
+    private void FormaterDocument()
+    {
+        if (!ExtensionsService.EstActive(ExtensionsService.IdPrettier))
+        {
+            AfficherExtensions("Prettier");
+            return;
+        }
+
+        var editeur = Contexte.EditeurActif;
+        if (editeur == null) return;
+
+        var extension = Contexte.CheminActif == null ? "" : Path.GetExtension(Contexte.CheminActif);
+        string? resultat;
+        try
+        {
+            resultat = FormateurService.Formater(editeur.Text, extension);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show("Formatage impossible : " + ex.Message, "Prettier");
+            return;
+        }
+
+        if (resultat == null)
+        {
+            MessageBox.Show("Prettier prend en charge les fichiers enregistrés en .json, .xml, .xaml, .csproj, .svg...",
+                "Prettier");
+            return;
+        }
+
+        if (resultat == editeur.Text) return;
+        var position = editeur.CaretOffset;
+        editeur.Document.Replace(0, editeur.Document.TextLength, resultat);
+        editeur.CaretOffset = Math.Min(position, editeur.Document.TextLength);
+    }
+
+    /// <summary>Live Server : démarre ou arrête le serveur local. Sans l'extension, ouvre sa fiche.</summary>
+    private void BasculerLiveServer()
+    {
+        if (!ExtensionsService.EstActive(ExtensionsService.IdLiveServer))
+        {
+            AfficherExtensions("Live Server");
+            return;
+        }
+
+        if (LiveServerService.EnCours)
+        {
+            LiveServerService.Arreter();
+            return;
+        }
+
+        var racine = Contexte.DossierRacine
+                     ?? (Contexte.CheminActif != null ? Path.GetDirectoryName(Contexte.CheminActif) : null);
+        if (string.IsNullOrEmpty(racine))
+        {
+            MessageBox.Show("Ouvrez un dossier (ou enregistrez un fichier HTML) avant de lancer Live Server.", "Live Server");
+            return;
+        }
+
+        if (!LiveServerService.Demarrer(racine))
+        {
+            MessageBox.Show("Aucun port libre entre 5500 et 5519.", "Live Server");
+            return;
+        }
+
+        var actif = Contexte.CheminActif;
+        var estHtml = actif != null
+                      && (actif.EndsWith(".html", StringComparison.OrdinalIgnoreCase)
+                          || actif.EndsWith(".htm", StringComparison.OrdinalIgnoreCase));
+        ExtensionUi.OuvrirUrl(LiveServerService.Url(estHtml ? actif : null));
+    }
 
     private void CodeRunner_Click(object sender, RoutedEventArgs e) => ExecuterCode();
 
@@ -715,6 +806,15 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (Keyboard.Modifiers == (ModifierKeys.Shift | ModifierKeys.Alt)
+            && (e.Key == Key.System ? e.SystemKey : e.Key) == Key.F
+            && ExtensionsService.EstActive(ExtensionsService.IdPrettier))
+        {
+            FormaterDocument();
+            e.Handled = true;
+            return;
+        }
+
         var mod = Keyboard.Modifiers;
         if ((mod & ModifierKeys.Control) == 0) return;
 
@@ -774,6 +874,7 @@ public partial class MainWindow : Window
         if (AssistantIA.Visibility == Visibility.Visible && ColonneIA.ActualWidth > 100)
             SettingsService.LargeurPanneauIA = ColonneIA.ActualWidth;
 
+        LiveServerService.Arreter();
         Terminal.Arreter();
         SettingsService.Enregistrer();
     }

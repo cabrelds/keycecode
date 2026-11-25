@@ -36,6 +36,7 @@ public static class EditeurService
         public CancellationTokenSource? JetonDiagnostic { get; set; }
         public CompletionWindow? Completion { get; set; }
         public MarqueurService? Marqueurs { get; set; }
+        public DecorationsRenderer? Decorations { get; set; }
     }
 
     private static readonly ConditionalWeakTable<TextEditor, EtatEditeur> _etats = new();
@@ -69,6 +70,7 @@ public static class EditeurService
         var etat = _etats.GetValue(editeur, _ => new EtatEditeur());
         etat.Chemin = chemin;
         etat.Marqueurs ??= new MarqueurService(editeur);
+        etat.Decorations ??= new DecorationsRenderer(editeur);
 
         editeur.ShowLineNumbers = true;
         editeur.Options.HighlightCurrentLine = true;
@@ -115,10 +117,14 @@ public static class EditeurService
 
         foreach (var editeur in EditeursVivants())
         {
-            if (!_etats.TryGetValue(editeur, out var etat) || etat.Marqueurs == null) continue;
-            var marqueurs = etat.Marqueurs;
-            if (editeur.Dispatcher.CheckAccess()) marqueurs.Redessiner();
-            else editeur.Dispatcher.InvokeAsync(marqueurs.Redessiner);
+            if (!_etats.TryGetValue(editeur, out var etat)) continue;
+            var action = () =>
+            {
+                etat.Marqueurs?.Redessiner();
+                etat.Decorations?.Redessiner();
+            };
+            if (editeur.Dispatcher.CheckAccess()) action();
+            else editeur.Dispatcher.InvokeAsync(action);
         }
     }
 

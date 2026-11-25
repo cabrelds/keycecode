@@ -14,6 +14,11 @@ public static class ExtensionsService
     public const string IdErrorLens = "usernamehw.errorlens";
     public const string IdBetterComments = "aaron-bond.better-comments";
     public const string IdCodeRunner = "formulahendry.code-runner";
+    public const string IdPrettier = "esbenp.prettier-vscode";
+    public const string IdLiveServer = "ritwickdey.liveserver";
+    public const string IdIndentRainbow = "oderwat.indent-rainbow";
+    public const string IdTrailingSpaces = "shardulm94.trailing-spaces";
+    public const string IdColorHighlight = "naumovs.color-highlight";
 
     // Valeurs d'affichage : celles des captures VS Code ; Better Comments et les tailles sont provisoires.
     private static readonly List<ExtensionInfo> _catalogue =
@@ -144,6 +149,12 @@ public static class ExtensionsService
     private static readonly Dictionary<string, int> _tempsActivation = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Regex _jetons = new("(?:[^\\s\"]+|\"[^\"]*\")+", RegexOptions.Compiled);
     private static bool _actualisation;
+
+    static ExtensionsService()
+    {
+        _catalogue.AddRange(ExtensionsVitrine.Fonctionnelles());
+        _catalogue.AddRange(ExtensionsVitrine.NonSupportees());
+    }
 
     public static IReadOnlyList<ExtensionInfo> Catalogue => _catalogue;
 
@@ -311,10 +322,11 @@ public static class ExtensionsService
             else if (jeton == "@enabled") resultat = resultat.Where(e => EstActive(e.Id));
             else if (jeton == "@disabled") resultat = resultat.Where(e => EstInstallee(e.Id) && !EstActive(e.Id));
             else if (jeton == "@recommended") resultat = resultat.Where(e => !EstInstallee(e.Id));
+            else if (jeton == "@supported") resultat = resultat.Where(e => e.PriseEnCharge);
             else if (jeton.StartsWith("@category:", StringComparison.Ordinal))
             {
                 var categorie = jeton["@category:".Length..].Trim('"');
-                resultat = resultat.Where(e => string.Equals(e.Categorie, categorie, StringComparison.OrdinalIgnoreCase));
+                resultat = resultat.Where(e => e.ToutesCategories.Any(c => string.Equals(c, categorie, StringComparison.OrdinalIgnoreCase)));
             }
             else if (jeton.StartsWith("@sort:", StringComparison.Ordinal)) tri = jeton["@sort:".Length..];
             else mots.Add(jeton.Trim('"'));
@@ -330,7 +342,7 @@ public static class ExtensionsService
         {
             "rating" => resultat.OrderByDescending(e => e.Note).ThenByDescending(e => e.NombreAvis),
             "name" => resultat.OrderBy(e => e.Nom, StringComparer.CurrentCultureIgnoreCase),
-            _ => resultat.OrderByDescending(e => e.Telechargements)
+            _ => resultat.OrderByDescending(e => e.PriseEnCharge).ThenByDescending(e => e.Telechargements)
         };
 
         return resultat.ToList();

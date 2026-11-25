@@ -168,6 +168,8 @@
                                 <MenuItem Header="Re_mplacer" InputGestureText="Ctrl+H" Click="Remplacer_Click"/>
                                 <MenuItem Header="_Aller à la ligne..." InputGestureText="Ctrl+G" Click="AllerALigne_Click"/>
                                 <MenuItem Header="Rechercher dans les _fichiers" InputGestureText="Ctrl+Maj+F" Click="RechercheFichiers_Click"/>
+                                <MenuItem x:Name="MenuPrettier" Header="_Formater le document (Prettier)"
+                                          InputGestureText="Maj+Alt+F" Click="Formater_Click" Visibility="Collapsed"/>
                             </MenuItem>
                             <MenuItem Header="_Affichage">
                                 <MenuItem Header="_Palette de commandes..." InputGestureText="Ctrl+Maj+P" Click="PaletteCommandes_Click"/>
@@ -271,6 +273,8 @@
                                 ToolTip="Réinitialiser le zoom" Click="ZoomNormal_Click"/>
                         <Button x:Name="BoutonStatutTheme" Content="Sombre" Style="{StaticResource BoutonStatut}"
                                 ToolTip="Basculer Clair / Sombre" Click="BasculerTheme_Click"/>
+                        <Button x:Name="BoutonGoLive" Content="◉ Go Live" Style="{StaticResource BoutonStatut}"
+                                Visibility="Collapsed" ToolTip="Démarrer Live Server" Click="GoLive_Click"/>
                         <Button Content="✦ Gemini" Style="{StaticResource BoutonStatut}"
                                 ToolTip="Ouvrir l'assistant Gemini (Ctrl+Alt+I)" Click="BasculerIA_Click"/>
                     </StackPanel>
