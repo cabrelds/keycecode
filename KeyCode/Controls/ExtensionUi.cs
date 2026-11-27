@@ -145,7 +145,7 @@ public static class ExtensionUi
             {
                 var image = new BitmapImage();
                 image.BeginInit();
-                image.UriSource = new Uri($"pack://application:,,,/Assets/Extensions/{id}.png", UriKind.Absolute);
+                image.UriSource = new Uri($"pack://application:,,,/KeyCode;component/Assets/Extensions/{id}.png", UriKind.Absolute);
                 image.CacheOption = BitmapCacheOption.OnLoad;
                 image.EndInit();
                 image.Freeze();

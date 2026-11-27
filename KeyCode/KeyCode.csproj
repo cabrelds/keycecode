@@ -6,12 +6,13 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <NuGetAudit>false</NuGetAudit>
     <ApplicationIcon>Assets\keycode.ico</ApplicationIcon>
-    <AssemblyTitle>KeyCode</AssemblyTitle>
-    <Product>KeyCode IDE</Product>
+    <AssemblyTitle>KeyceCode</AssemblyTitle>
+    <Product>KeyceCode IDE</Product>
     <Version>2.0.0</Version>
-    <Company>Équipe KeyCode</Company>
-    <Description>Éditeur de code moderne style VS Code avec assistant IA Gemini</Description>
+    <Company>Équipe KeyceCode</Company>
+    <Description>Éditeur de code moderne style VS Code avec Place de marché d'extensions et assistant IA Gemini</Description>
   </PropertyGroup>
 
   <ItemGroup>

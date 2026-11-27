@@ -1,9 +1,9 @@
-; Script Inno Setup pour KeyCode IDE
+; Script Inno Setup pour KeyceCode IDE
 ; Permet également la compilation via ISCC.exe si Inno Setup 6 est installé.
 
-#define MyAppName "KeyCode"
+#define MyAppName "KeyceCode"
 #define MyAppVersion "2.0.0"
-#define MyAppPublisher "Équipe KeyCode (Keyce)"
+#define MyAppPublisher "Équipe KeyceCode (Keyce)"
 #define MyAppURL "https://github.com/cabrelds/keycecode"
 #define MyAppExeName "KeyCode.exe"
 #define PublishDir "..\publish\win-x64"
@@ -21,7 +21,7 @@ DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 OutputDir=dist
-OutputBaseFilename=KeyCodeSetup-Inno
+OutputBaseFilename=KeyceCodeSetup-Inno
 SetupIconFile=..\KeyCode\Assets\keycode.ico
 Compression=lzma2/max
 SolidCompression=yes
@@ -32,7 +32,7 @@ Name: "french"; MessagesFile: "compiler:Languages\French.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "Créer une icône sur le Bureau"; GroupDescription: "Icônes supplémentaires :"
-Name: "contextmenu"; Description: "Ajouter « Ouvrir avec KeyCode » au menu contextuel Windows"; GroupDescription: "Intégration Windows :"
+Name: "contextmenu"; Description: "Ajouter « Ouvrir avec KeyceCode » au menu contextuel Windows"; GroupDescription: "Intégration Windows :"
 
 [Files]
 Source: "{#PublishDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -42,12 +42,12 @@ Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFile
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Registry]
-Root: HKCU; Subkey: "Software\Classes\*\shell\KeyCode"; ValueType: string; ValueName: ""; ValueData: "Ouvrir avec KeyCode"; Flags: uninsdeletekey; Tasks: contextmenu
-Root: HKCU; Subkey: "Software\Classes\*\shell\KeyCode"; ValueType: string; ValueName: "Icon"; ValueData: """{app}\{#MyAppExeName}"""; Tasks: contextmenu
-Root: HKCU; Subkey: "Software\Classes\*\shell\KeyCode\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""; Tasks: contextmenu
-Root: HKCU; Subkey: "Software\Classes\Directory\shell\KeyCode"; ValueType: string; ValueName: ""; ValueData: "Ouvrir le dossier dans KeyCode"; Flags: uninsdeletekey; Tasks: contextmenu
-Root: HKCU; Subkey: "Software\Classes\Directory\shell\KeyCode"; ValueType: string; ValueName: "Icon"; ValueData: """{app}\{#MyAppExeName}"""; Tasks: contextmenu
-Root: HKCU; Subkey: "Software\Classes\Directory\shell\KeyCode\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%V"""; Tasks: contextmenu
+Root: HKCU; Subkey: "Software\Classes\*\shell\KeyceCode"; ValueType: string; ValueName: ""; ValueData: "Ouvrir avec KeyceCode"; Flags: uninsdeletekey; Tasks: contextmenu
+Root: HKCU; Subkey: "Software\Classes\*\shell\KeyceCode"; ValueType: string; ValueName: "Icon"; ValueData: """{app}\{#MyAppExeName}"""; Tasks: contextmenu
+Root: HKCU; Subkey: "Software\Classes\*\shell\KeyceCode\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""; Tasks: contextmenu
+Root: HKCU; Subkey: "Software\Classes\Directory\shell\KeyceCode"; ValueType: string; ValueName: ""; ValueData: "Ouvrir le dossier dans KeyceCode"; Flags: uninsdeletekey; Tasks: contextmenu
+Root: HKCU; Subkey: "Software\Classes\Directory\shell\KeyceCode"; ValueType: string; ValueName: "Icon"; ValueData: """{app}\{#MyAppExeName}"""; Tasks: contextmenu
+Root: HKCU; Subkey: "Software\Classes\Directory\shell\KeyceCode\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%V"""; Tasks: contextmenu
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "Lancer KeyCode"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Description: "Lancer KeyceCode"; Flags: nowait postinstall skipifsilent
