@@ -288,6 +288,8 @@
                     <ColumnDefinition x:Name="ColonneGauche" Width="260"/>
                     <ColumnDefinition x:Name="ColonneSeparateurGauche" Width="4"/>
                     <ColumnDefinition Width="*"/>
+                    <ColumnDefinition x:Name="ColonneSeparateurIA" Width="0"/>
+                    <ColumnDefinition x:Name="ColonneIA" Width="0"/>
                 </Grid.ColumnDefinitions>
 
                 <!-- Barre d'activité VS Code (icônes vectorielles) -->
@@ -393,8 +395,6 @@
                                                   Height="260" Visibility="Collapsed"/>
                     <ctl:ExtensionsControl x:Name="PanneauExtensions" Grid.Row="0" Grid.RowSpan="2"
                                            Visibility="Collapsed"/>
-                    <ctl:AssistantIAControl x:Name="AssistantIA" Grid.Row="0" Grid.RowSpan="2"
-                                            Visibility="Collapsed"/>
                 </Grid>
 
                 <GridSplitter x:Name="SeparateurGauche" Grid.Column="2" Width="4"
@@ -420,8 +420,14 @@
                     <ctl:TerminalControl x:Name="Terminal" Grid.Row="2"/>
                 </Grid>
 
+                <GridSplitter x:Name="SeparateurIA" Grid.Column="4" Width="4" Visibility="Collapsed"
+                              HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
+
+                <!-- Panneau droit : Assistant IA Gemini -->
+                <ctl:AssistantIAControl x:Name="AssistantIA" Grid.Column="5" Visibility="Collapsed"/>
+
                 <!-- Palette de commandes (Ctrl+P / Ctrl+Maj+P) -->
-                <ctl:PaletteCommandesControl x:Name="Palette" Grid.Column="1" Grid.ColumnSpan="3"/>
+                <ctl:PaletteCommandesControl x:Name="Palette" Grid.Column="1" Grid.ColumnSpan="5"/>
             </Grid>
         </DockPanel>
     </Border>

@@ -17,7 +17,7 @@ namespace KeyCode;
 /// </summary>
 public partial class MainWindow : Window
 {
-    private enum VueGauche { Explorateur, Recherche, Extensions, Gemini }
+    private enum VueGauche { Explorateur, Recherche, Extensions }
 
     private VueGauche _vueGauche = VueGauche.Explorateur;
     private TextEditor? _editeurAuDetail;
@@ -25,6 +25,7 @@ public partial class MainWindow : Window
 
     private TextEditor? _editeurSuivi;
     private double _largeurGauche = 260;
+    private double _largeurIA = 340;
     private double _hauteurBas = 210;
 
     public MainWindow()
@@ -34,6 +35,7 @@ public partial class MainWindow : Window
         ThemeManager.Appliquer(SettingsService.Theme);
 
         _largeurGauche = SettingsService.LargeurPanneauGauche;
+        _largeurIA = SettingsService.LargeurPanneauIA;
         _hauteurBas = SettingsService.HauteurPanneauBas;
 
         InitializeComponent();
@@ -295,7 +297,6 @@ public partial class MainWindow : Window
     private void AppliquerVueGauche()
     {
         PanneauExtensions.Visibility = _vueGauche == VueGauche.Extensions ? Visibility.Visible : Visibility.Collapsed;
-        AssistantIA.Visibility = _vueGauche == VueGauche.Gemini ? Visibility.Visible : Visibility.Collapsed;
 
         if (_vueGauche == VueGauche.Recherche)
             RechercheFichiers.Afficher();
@@ -311,10 +312,6 @@ public partial class MainWindow : Window
         ActExplorateur.Tag = visible && _vueGauche == VueGauche.Explorateur ? "Actif" : null;
         ActRecherche.Tag = visible && _vueGauche == VueGauche.Recherche ? "Actif" : null;
         ActExtensions.Tag = visible && _vueGauche == VueGauche.Extensions ? "Actif" : null;
-
-        var geminiActif = visible && _vueGauche == VueGauche.Gemini;
-        ActGemini.Tag = geminiActif ? "Actif" : null;
-        SettingsService.PanneauIAVisible = geminiActif;
     }
 
     /// <summary>Ouvre le panneau Extensions ; une requête non nulle remplit le champ de recherche ("" = tout effacer).</summary>
@@ -428,20 +425,33 @@ public partial class MainWindow : Window
 
     private void BasculerGemini()
     {
-        if (PanneauGauche.Visibility == Visibility.Visible && _vueGauche == VueGauche.Gemini)
-            BasculerExplorateur();
+        if (AssistantIA.Visibility == Visibility.Visible)
+            MasquerGemini();
         else
             AfficherGemini();
     }
 
-    /// <summary>Affiche Gemini dans le panneau gauche (largeur minimale 340 px, comme l'agent de VS Code).</summary>
+    /// <summary>Affiche Gemini dans le panneau de droite, à côté de l'éditeur.</summary>
     private void AfficherGemini()
     {
-        _vueGauche = VueGauche.Gemini;
-        if (PanneauGauche.Visibility != Visibility.Visible) BasculerExplorateur();
-        AppliquerVueGauche();
-        if (ColonneGauche.Width.Value < 320) ColonneGauche.Width = new GridLength(340);
+        AssistantIA.Visibility = Visibility.Visible;
+        SeparateurIA.Visibility = Visibility.Visible;
+        ColonneIA.Width = new GridLength(_largeurIA);
+        ColonneSeparateurIA.Width = new GridLength(4);
+        ActGemini.Tag = "Actif";
+        SettingsService.PanneauIAVisible = true;
         Dispatcher.BeginInvoke(() => AssistantIA.FocaliserPrompt());
+    }
+
+    private void MasquerGemini()
+    {
+        if (ColonneIA.ActualWidth > 100) _largeurIA = ColonneIA.ActualWidth;
+        AssistantIA.Visibility = Visibility.Collapsed;
+        SeparateurIA.Visibility = Visibility.Collapsed;
+        ColonneIA.Width = new GridLength(0);
+        ColonneSeparateurIA.Width = new GridLength(0);
+        ActGemini.Tag = null;
+        SettingsService.PanneauIAVisible = false;
     }
 
     private void ExpliquerIA_Click(object sender, RoutedEventArgs e)
@@ -885,6 +895,8 @@ public partial class MainWindow : Window
             SettingsService.LargeurPanneauGauche = ColonneGauche.ActualWidth;
         if (Terminal.Visibility == Visibility.Visible && LigneBas.ActualHeight > 40)
             SettingsService.HauteurPanneauBas = LigneBas.ActualHeight;
+        if (AssistantIA.Visibility == Visibility.Visible && ColonneIA.ActualWidth > 100)
+            SettingsService.LargeurPanneauIA = ColonneIA.ActualWidth;
 
         LiveServerService.Arreter();
         Terminal.Arreter();
