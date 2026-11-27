@@ -1,3 +1,4 @@
+using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Text;
@@ -89,7 +90,10 @@ public static class GeminiService
             // Classe les meilleurs modèles récents Flash puis Pro en tête
             return candidats
                 .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderByDescending(c => c.Contains("flash", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(c => c.Contains("omni", StringComparison.OrdinalIgnoreCase)
+                              || c.Contains("preview", StringComparison.OrdinalIgnoreCase)
+                              || c.Contains("exp", StringComparison.OrdinalIgnoreCase) ? 1 : 0)
+                .ThenByDescending(c => c.Contains("flash", StringComparison.OrdinalIgnoreCase))
                 .ThenByDescending(c => c.Contains("latest", StringComparison.OrdinalIgnoreCase))
                 .ThenByDescending(c => c, StringComparer.OrdinalIgnoreCase)
                 .ToList();
@@ -110,7 +114,7 @@ public static class GeminiService
         {
             return (false,
                 "Aucune clé API Gemini n'est configurée.\n" +
-                "Cliquez sur « ⚙ Clé API » ci-dessus pour coller votre clé Google AI Studio (https://aistudio.google.com/apikey).");
+                "Cliquez sur « Se connecter » (ou sur l'engrenage ⚙ en haut du panneau Gemini) pour coller votre clé Google AI Studio (https://aistudio.google.com/apikey).");
         }
 
         var modele = string.IsNullOrWhiteSpace(SettingsService.ModeleGemini)
@@ -139,7 +143,99 @@ public static class GeminiService
             }
         }
 
+        // Modèle saturé ou sans quota : essaie un autre modèle sans modifier le réglage
+        if (!succes && !jeton.IsCancellationRequested
+            && (EstErreurTemporaire(codeHttp, texteReponse) || EstErreurQuota(texteReponse)))
+        {
+            var autres = await ListerModelesDisponiblesAsync(cle, jeton).ConfigureAwait(false);
+            foreach (var autre in autres
+                         .Where(m => !string.Equals(m, modele, StringComparison.OrdinalIgnoreCase))
+                         .Take(3))
+            {
+                var reponseAutre = await ExecuterRequeteAsync(cle, autre, chargeJson, jeton).ConfigureAwait(false);
+                if (reponseAutre.Succes)
+                    return (true, $"*(`{modele}` indisponible : réponse donnée par `{autre}`)*\n\n{reponseAutre.Reponse}");
+            }
+
+            return (false, texteReponse + "\n\nAucun modèle n'a pu répondre. Choisissez un autre modèle avec le sélecteur du panneau, ou réessayez plus tard.");
+        }
+
         return (succes, texteReponse);
+    }
+
+    /// <summary>
+    /// Version en flux continu (SSE) : appelle surTexte à chaque morceau reçu.
+    /// Pas de ConfigureAwait(false) ici : le rappel reste sur le thread de l'appelant (interface).
+    /// En cas d'erreur HTTP, repli sur EnvoyerAsync (message d'erreur clair + changement de modèle automatique).
+    /// </summary>
+    public static async Task<(bool Succes, string Reponse)> EnvoyerFluxAsync(
+        IReadOnlyList<MessageChat> historique,
+        string? contexteSupplementaire,
+        Action<string> surTexte,
+        CancellationToken jeton = default)
+    {
+        var cle = (SettingsService.CleApiGemini ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(cle))
+            return await EnvoyerAsync(historique, contexteSupplementaire, jeton);
+
+        var modele = string.IsNullOrWhiteSpace(SettingsService.ModeleGemini)
+            ? ModelesParDefaut[0]
+            : SettingsService.ModeleGemini.Trim();
+
+        var url = $"https://generativelanguage.googleapis.com/v1beta/models/{Uri.EscapeDataString(modele)}:streamGenerateContent?alt=sse&key={Uri.EscapeDataString(cle)}";
+        var chargeJson = ConstruireChargeJson(historique, contexteSupplementaire);
+        var total = new StringBuilder();
+
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Post, url)
+            {
+                Content = new StringContent(chargeJson, Encoding.UTF8, "application/json")
+            };
+
+            using var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, jeton);
+            if (!resp.IsSuccessStatusCode)
+                return await EnvoyerAsync(historique, contexteSupplementaire, jeton);
+
+            using var flux = await resp.Content.ReadAsStreamAsync(jeton);
+            using var lecteur = new StreamReader(flux, Encoding.UTF8);
+
+            string? ligne;
+            while ((ligne = await lecteur.ReadLineAsync(jeton)) != null)
+            {
+                if (!ligne.StartsWith("data:", StringComparison.Ordinal)) continue;
+                var json = ligne["data:".Length..].Trim();
+                if (json.Length == 0) continue;
+
+                using var doc = JsonDocument.Parse(json);
+                if (!doc.RootElement.TryGetProperty("candidates", out var candidats) || candidats.GetArrayLength() == 0)
+                    continue;
+                if (!candidats[0].TryGetProperty("content", out var contenu) ||
+                    !contenu.TryGetProperty("parts", out var parties))
+                    continue;
+
+                foreach (var partie in parties.EnumerateArray())
+                {
+                    if (partie.TryGetProperty("text", out var t) && t.GetString() is { Length: > 0 } texte)
+                    {
+                        total.Append(texte);
+                        surTexte(texte);
+                    }
+                }
+            }
+
+            return total.Length > 0
+                ? (true, total.ToString().Trim())
+                : (false, "Gemini n'a renvoyé aucun contenu exploitable.");
+        }
+        catch (OperationCanceledException)
+        {
+            return (false, "Requête annulée.");
+        }
+        catch (Exception ex)
+        {
+            return (false, $"Impossible de joindre l'API Gemini : {ex.Message}");
+        }
     }
 
     private static string ConstruireChargeJson(
@@ -236,6 +332,20 @@ public static class GeminiService
             return (false, 0, $"Impossible de joindre l'API Gemini : {ex.Message}");
         }
     }
+
+    private static bool EstErreurQuota(string message) =>
+        message.Contains("quota", StringComparison.OrdinalIgnoreCase)
+        || message.Contains("rate limit", StringComparison.OrdinalIgnoreCase);
+
+    private static bool EstErreurTemporaire(HttpStatusCode codeHttp, string message) =>
+        !EstErreurQuota(message)
+        && (codeHttp == 0
+            || codeHttp == HttpStatusCode.TooManyRequests
+            || codeHttp == HttpStatusCode.ServiceUnavailable
+            || codeHttp == HttpStatusCode.GatewayTimeout
+            || codeHttp == HttpStatusCode.RequestTimeout
+            || message.Contains("high demand", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("overloaded", StringComparison.OrdinalIgnoreCase));
 
     private static bool EstErreurModeleIndisponible(HttpStatusCode codeHttp, string message)
     {

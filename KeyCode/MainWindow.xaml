@@ -355,10 +355,12 @@
                                       StrokeThickness="1.5" Fill="Transparent" Width="20" Height="18" Stretch="Uniform"/>
                             </Button>
 
-                            <Button x:Name="ActGemini" ToolTip="Assistant IA Gemini (Ctrl+Alt+I)"
+                            <Button x:Name="ActGemini" ToolTip="Gemini (Ctrl+Alt+I)"
                                     Style="{StaticResource BoutonBarreActivite}"
                                     Click="BasculerIA_Click">
-                                <TextBlock Text="✦" FontSize="19" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <Path Data="{StaticResource GeminiLogoGeometry}"
+                                      Fill="{StaticResource GeminiLogoBrush}"
+                                      Width="20" Height="20" Stretch="Uniform"/>
                             </Button>
                         </StackPanel>
 
