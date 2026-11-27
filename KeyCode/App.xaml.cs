@@ -41,8 +41,8 @@ public partial class App : Application
     {
         EnregistrerErreur("UI", e.Exception);
         MessageBox.Show(
-            $"Une erreur inattendue est survenue mais KeyCode reste ouvert :\n\n{e.Exception.Message}",
-            "KeyCode - Erreur interceptée",
+            $"Une erreur inattendue est survenue mais KeyceCode reste ouvert :\n\n{e.Exception.Message}",
+            "KeyceCode - Erreur interceptée",
             MessageBoxButton.OK,
             MessageBoxImage.Warning);
         e.Handled = true;

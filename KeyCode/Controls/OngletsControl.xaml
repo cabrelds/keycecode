@@ -180,13 +180,18 @@
                     Visibility="Collapsed"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center">
-            <TextBlock Text="KeyCode"
+            <Image Source="pack://application:,,,/KeyCode;component/Assets/keycode.ico"
+                   Width="84" Height="84"
+                   Margin="0,0,0,12"
+                   HorizontalAlignment="Center"
+                   RenderOptions.BitmapScalingMode="HighQuality"/>
+            <TextBlock Text="KeyceCode"
                        FontSize="28"
                        FontWeight="Light"
                        Foreground="{DynamicResource ThemeTexteSecondaire}"
                        HorizontalAlignment="Center"
                        Margin="0,0,0,8"/>
-            <TextBlock Text="Ctrl+N : Nouveau  •  Ctrl+O : Ouvrir  •  Ctrl+P : Accès rapide  •  Ctrl+Maj+P : Commandes  •  F5 : Exécuter"
+            <TextBlock Text="Ctrl+N : Nouveau  •  Ctrl+O : Ouvrir  •  Ctrl+P : Accès rapide  •  Ctrl+Maj+X : Extensions  •  F5 : Exécuter"
                        FontSize="12"
                        Foreground="{DynamicResource ThemeTexteSecondaire}"
                        HorizontalAlignment="Center"

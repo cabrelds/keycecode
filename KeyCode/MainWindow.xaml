@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ctl="clr-namespace:KeyCode.Controls"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
-        Title="KeyCode"
+        Title="KeyceCode"
         Height="760" Width="1280" MinHeight="480" MinWidth="760"
         Background="{DynamicResource ThemeFond}"
         Foreground="{DynamicResource ThemeTexte}"
@@ -132,11 +132,10 @@
 
                     <!-- Logo + Menus -->
                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                        <Border Background="{DynamicResource ThemeAccent}" CornerRadius="3"
-                                Width="20" Height="20" Margin="8,0,6,0">
-                            <TextBlock Text="&lt;/&gt;" Foreground="White" FontSize="9" FontWeight="Bold"
-                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
+                        <Image Source="pack://application:,,,/KeyCode;component/Assets/keycode.ico"
+                               Width="22" Height="22" Margin="8,0,6,0"
+                               RenderOptions.BitmapScalingMode="HighQuality"
+                               VerticalAlignment="Center"/>
 
                         <Menu shell:WindowChrome.IsHitTestVisibleInChrome="True" VerticalAlignment="Center">
                             <MenuItem Header="_Fichier">
@@ -228,7 +227,7 @@
                                 <Border x:Name="Fond" Background="{TemplateBinding Background}"
                                         BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
                                         CornerRadius="4" Padding="12,0">
-                                    <TextBlock x:Name="TexteTitreBarre" Text="🔍  KeyCode — Rechercher un fichier (Ctrl+P)"
+                                    <TextBlock x:Name="TexteTitreBarre" Text="🔍  KeyceCode — Rechercher un fichier (Ctrl+P)"
                                                Foreground="{DynamicResource ThemeTexteSecondaire}"
                                                FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"
                                                TextTrimming="CharacterEllipsis"/>

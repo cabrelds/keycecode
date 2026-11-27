@@ -9,7 +9,7 @@ using Microsoft.Win32;
 namespace KeyCodeSetup;
 
 /// <summary>
-/// Assistant d'installation graphique autonome pour KeyCode IDE.
+/// Assistant d'installation graphique autonome pour KeyceCode IDE.
 /// </summary>
 public partial class MainWindow : Window
 {
@@ -23,13 +23,13 @@ public partial class MainWindow : Window
 
         var defaut = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Programs", "KeyCode");
+            "Programs", "KeyceCode");
         ChampDossier.Text = defaut;
 
         var aPayload = Assembly.GetExecutingAssembly().GetManifestResourceNames()
             .Contains("KeyCodeSetup.Payload.zip");
         TexteInfoPayload.Text = aPayload
-            ? "Paquet complet embarqué prêt à être installé sans connexion Internet."
+            ? "Paquet complet KeyceCode IDE 2.0 embarqué prêt à être installé sans connexion Internet."
             : "Mode test / dev : aucun paquet ZIP embarqué — sélectionnez ou générez d'abord le livrable via installer/construire-setup.ps1.";
     }
 
@@ -37,11 +37,11 @@ public partial class MainWindow : Window
     {
         var dlg = new OpenFolderDialog
         {
-            Title = "Choisir le dossier d'installation de KeyCode",
+            Title = "Choisir le dossier d'installation de KeyceCode",
             InitialDirectory = Directory.Exists(ChampDossier.Text) ? ChampDossier.Text : Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
         };
         if (dlg.ShowDialog() == true)
-            ChampDossier.Text = Path.Combine(dlg.FolderName, "KeyCode");
+            ChampDossier.Text = Path.Combine(dlg.FolderName, "KeyceCode");
     }
 
     private void Annuler_Click(object sender, RoutedEventArgs e)
@@ -67,7 +67,7 @@ public partial class MainWindow : Window
         var cible = ChampDossier.Text.Trim();
         if (string.IsNullOrWhiteSpace(cible))
         {
-            MessageBox.Show("Veuillez choisir un dossier d'installation valide.", "KeyCode Setup",
+            MessageBox.Show("Veuillez choisir un dossier d'installation valide.", "KeyceCode Setup",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -90,7 +90,7 @@ public partial class MainWindow : Window
             _installe = true;
             PanneauProgression.Visibility = Visibility.Collapsed;
             PanneauTermine.Visibility = Visibility.Visible;
-            TexteResume.Text = $"KeyCode a été installé dans :\n{cible}\n\nVous pouvez également le désinstaller à tout moment depuis les Paramètres Windows > Applications.";
+            TexteResume.Text = $"KeyceCode IDE a été installé dans :\n{cible}\n\nVous pouvez également le désinstaller à tout moment depuis les Paramètres Windows > Applications.";
             BoutonAnnuler.Visibility = Visibility.Collapsed;
             BoutonPrincipal.Content = "Terminer";
             BoutonPrincipal.IsEnabled = true;
@@ -101,7 +101,7 @@ public partial class MainWindow : Window
             PanneauConfig.Visibility = Visibility.Visible;
             BoutonPrincipal.IsEnabled = true;
             BoutonAnnuler.IsEnabled = true;
-            MessageBox.Show($"Erreur pendant l'installation :\n\n{ex.Message}", "KeyCode Setup",
+            MessageBox.Show($"Erreur pendant l'installation :\n\n{ex.Message}", "KeyceCode Setup",
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
@@ -115,7 +115,7 @@ public partial class MainWindow : Window
         Dispatcher.Invoke(() =>
         {
             BarreProgression.Value = 15;
-            TexteEtape.Text = "Extraction des fichiers de KeyCode...";
+            TexteEtape.Text = "Extraction des fichiers de KeyceCode IDE...";
             TexteJournal.Text = cible;
         });
 
@@ -169,19 +169,20 @@ public partial class MainWindow : Window
 
         if (bureau)
         {
-            var lienBureau = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
-                "KeyCode.lnk");
-            CreerRaccourci(lienBureau, exe, cible, "Éditeur KeyCode IDE");
+            var bureauDir = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+            var ancienLien = Path.Combine(bureauDir, "KeyCode.lnk");
+            try { if (File.Exists(ancienLien)) File.Delete(ancienLien); } catch { }
+
+            var lienBureau = Path.Combine(bureauDir, "KeyceCode.lnk");
+            CreerRaccourci(lienBureau, exe, cible, "Éditeur KeyceCode IDE");
         }
 
         if (menuDemarrer)
         {
-            var dossierStart = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.Programs),
-                "KeyCode");
+            var progsDir = Environment.GetFolderPath(Environment.SpecialFolder.Programs);
+            var dossierStart = Path.Combine(progsDir, "KeyceCode");
             Directory.CreateDirectory(dossierStart);
-            CreerRaccourci(Path.Combine(dossierStart, "KeyCode.lnk"), exe, cible, "Éditeur KeyCode IDE");
+            CreerRaccourci(Path.Combine(dossierStart, "KeyceCode.lnk"), exe, cible, "Éditeur KeyceCode IDE");
         }
 
         if (contextuel)
@@ -218,17 +219,17 @@ public partial class MainWindow : Window
 
     private static void EnregistrerMenuContextuel(string exe)
     {
-        using (var kFile = Registry.CurrentUser.CreateSubKey(@"Software\Classes\*\shell\KeyCode"))
+        using (var kFile = Registry.CurrentUser.CreateSubKey(@"Software\Classes\*\shell\KeyceCode"))
         {
-            kFile.SetValue("", "Ouvrir avec KeyCode");
+            kFile.SetValue("", "Ouvrir avec KeyceCode");
             kFile.SetValue("Icon", $"\"{exe}\"");
             using var cmd = kFile.CreateSubKey("command");
             cmd.SetValue("", $"\"{exe}\" \"%1\"");
         }
 
-        using (var kDir = Registry.CurrentUser.CreateSubKey(@"Software\Classes\Directory\shell\KeyCode"))
+        using (var kDir = Registry.CurrentUser.CreateSubKey(@"Software\Classes\Directory\shell\KeyceCode"))
         {
-            kDir.SetValue("", "Ouvrir le dossier dans KeyCode");
+            kDir.SetValue("", "Ouvrir le dossier dans KeyceCode");
             kDir.SetValue("Icon", $"\"{exe}\"");
             using var cmd = kDir.CreateSubKey("command");
             cmd.SetValue("", $"\"{exe}\" \"%V\"");
@@ -237,14 +238,19 @@ public partial class MainWindow : Window
 
     private static string EcrireDesinstallateur(string cible)
     {
-        var cheminPs1 = Path.Combine(cible, "Desinstaller-KeyCode.ps1");
+        var cheminPs1 = Path.Combine(cible, "Desinstaller-KeyceCode.ps1");
         var contenuPs1 = $@"
 $ErrorActionPreference = 'SilentlyContinue'
 Get-Process KeyCode | Stop-Process -Force
+Remove-Item -Force ""$([Environment]::GetFolderPath('DesktopDirectory'))\KeyceCode.lnk""
 Remove-Item -Force ""$([Environment]::GetFolderPath('DesktopDirectory'))\KeyCode.lnk""
+Remove-Item -Recurse -Force ""$([Environment]::GetFolderPath('Programs'))\KeyceCode""
 Remove-Item -Recurse -Force ""$([Environment]::GetFolderPath('Programs'))\KeyCode""
+Remove-Item -Recurse -Force 'HKCU:\Software\Classes\*\shell\KeyceCode'
+Remove-Item -Recurse -Force 'HKCU:\Software\Classes\Directory\shell\KeyceCode'
 Remove-Item -Recurse -Force 'HKCU:\Software\Classes\*\shell\KeyCode'
 Remove-Item -Recurse -Force 'HKCU:\Software\Classes\Directory\shell\KeyCode'
+Remove-Item -Recurse -Force 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\KeyceCode'
 Remove-Item -Recurse -Force 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\KeyCode'
 Start-Sleep -Milliseconds 300
 $cible = '{cible.Replace("'", "''")}'
@@ -252,17 +258,17 @@ Start-Process cmd.exe -WindowStyle Hidden -ArgumentList ""/c timeout /t 2 /nobre
 ";
         File.WriteAllText(cheminPs1, contenuPs1, Encoding.UTF8);
 
-        var cheminCmd = Path.Combine(cible, "Desinstaller-KeyCode.cmd");
+        var cheminCmd = Path.Combine(cible, "Desinstaller-KeyceCode.cmd");
         File.WriteAllText(cheminCmd, $"@echo off\r\npowershell -ExecutionPolicy Bypass -File \"{cheminPs1}\"\r\n", Encoding.ASCII);
         return cheminCmd;
     }
 
     private static void EnregistrerAjoutSuppression(string cible, string exe, string desinstallerCmd)
     {
-        using var k = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Uninstall\KeyCode");
-        k.SetValue("DisplayName", "KeyCode IDE");
+        using var k = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Uninstall\KeyceCode");
+        k.SetValue("DisplayName", "KeyceCode IDE");
         k.SetValue("DisplayVersion", "2.0.0");
-        k.SetValue("Publisher", "Équipe KeyCode");
+        k.SetValue("Publisher", "Équipe KeyceCode");
         k.SetValue("DisplayIcon", exe);
         k.SetValue("InstallLocation", cible);
         k.SetValue("UninstallString", $"\"{desinstallerCmd}\"");
