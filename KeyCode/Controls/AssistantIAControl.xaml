@@ -230,6 +230,20 @@
 
 
 
+            <StackPanel x:Name="BlocConnexion" VerticalAlignment="Bottom" HorizontalAlignment="Center"
+                            Margin="0,0,0,26">
+                    <Button Content="Se connecter" Style="{StaticResource BoutonPilule}"
+                            HorizontalAlignment="Center" Click="SeConnecter_Click"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,12,0,0">
+                        <TextBlock Text="Vous avez déjà une clé ?" FontSize="12" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource ThemeTexteSecondaire}"/>
+                        <TextBlock Text="  ·  " FontSize="12" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource ThemeTexteSecondaire}"/>
+                        <Button Content="Saisir" Style="{StaticResource BoutonLienIA}" Click="SeConnecter_Click"/>
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+
             <ScrollViewer x:Name="DefileurChat" Visibility="Collapsed"
                           VerticalScrollBarVisibility="Auto" Padding="12,4,12,4">
                 <StackPanel x:Name="ListeMessages"/>
