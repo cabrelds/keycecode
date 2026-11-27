@@ -17,7 +17,7 @@ namespace KeyCode;
 /// </summary>
 public partial class MainWindow : Window
 {
-    private enum VueGauche { Explorateur, Recherche, Extensions }
+    private enum VueGauche { Explorateur, Recherche, Extensions, Gemini }
 
     private VueGauche _vueGauche = VueGauche.Explorateur;
     private TextEditor? _editeurAuDetail;
@@ -25,7 +25,6 @@ public partial class MainWindow : Window
 
     private TextEditor? _editeurSuivi;
     private double _largeurGauche = 260;
-    private double _largeurIA = 340;
     private double _hauteurBas = 210;
 
     public MainWindow()
@@ -35,7 +34,6 @@ public partial class MainWindow : Window
         ThemeManager.Appliquer(SettingsService.Theme);
 
         _largeurGauche = SettingsService.LargeurPanneauGauche;
-        _largeurIA = SettingsService.LargeurPanneauIA;
         _hauteurBas = SettingsService.HauteurPanneauBas;
 
         InitializeComponent();
@@ -51,7 +49,7 @@ public partial class MainWindow : Window
         ColonneGauche.Width = new GridLength(_largeurGauche);
         LigneBas.Height = new GridLength(_hauteurBas);
         if (SettingsService.PanneauIAVisible)
-            AfficherPanneauIA(true);
+            AfficherGemini();
 
         AppEvents.FichierDemandeALaLigne += (chemin, ligne) => Onglets.OuvrirFichierALaLigne(chemin, ligne);
         AppEvents.FichierDemande += AjouterRecent;
@@ -60,10 +58,9 @@ public partial class MainWindow : Window
         AppEvents.DossierOuvert += _ => MettreAJourTitreEtDossier();
         AppEvents.DiagnosticsChanges += () => Dispatcher.InvokeAsync(MettreAJourCompteurDiagnostics);
         AppEvents.ThemeChange += _ => Dispatcher.InvokeAsync(MettreAJourBoutonTheme);
-        AppEvents.AideIADemandee += (_, _, _) => Dispatcher.InvokeAsync(() => AfficherPanneauIA(true));
+        AppEvents.AideIADemandee += (_, _, _) => Dispatcher.InvokeAsync(() => AfficherGemini());
 
         Terminal.DemandeMasquage += () => BasculerTerminal();
-        AssistantIA.DemandeMasquage += () => AfficherPanneauIA(false);
 
         InitialiserPaletteCommandes();
         InitialiserExtensions();
@@ -127,7 +124,7 @@ public partial class MainWindow : Window
             new("Affichage : Thème Clair+ (VS Code)", "", () => ChangerTheme("Clair")),
             new("Affichage : Afficher / Masquer l'explorateur", "Ctrl+Maj+E", BasculerExplorateur),
             new("Affichage : Afficher / Masquer le terminal", "Ctrl+J", BasculerTerminal),
-            new("Affichage : Afficher / Masquer Gemini AI", "Ctrl+Alt+I", () => AfficherPanneauIA(AssistantIA.Visibility != Visibility.Visible)),
+            new("Affichage : Afficher / Masquer Gemini AI", "Ctrl+Alt+I", BasculerGemini),
             new("Affichage : Zoom +", "", () => ChangerTaille(SettingsService.TaillePolice + 2)),
             new("Affichage : Zoom -", "", () => ChangerTaille(SettingsService.TaillePolice - 2)),
             new("Affichage : Réinitialiser le zoom", "", () => ChangerTaille(14)),
@@ -298,6 +295,7 @@ public partial class MainWindow : Window
     private void AppliquerVueGauche()
     {
         PanneauExtensions.Visibility = _vueGauche == VueGauche.Extensions ? Visibility.Visible : Visibility.Collapsed;
+        AssistantIA.Visibility = _vueGauche == VueGauche.Gemini ? Visibility.Visible : Visibility.Collapsed;
 
         if (_vueGauche == VueGauche.Recherche)
             RechercheFichiers.Afficher();
@@ -313,6 +311,10 @@ public partial class MainWindow : Window
         ActExplorateur.Tag = visible && _vueGauche == VueGauche.Explorateur ? "Actif" : null;
         ActRecherche.Tag = visible && _vueGauche == VueGauche.Recherche ? "Actif" : null;
         ActExtensions.Tag = visible && _vueGauche == VueGauche.Extensions ? "Actif" : null;
+
+        var geminiActif = visible && _vueGauche == VueGauche.Gemini;
+        ActGemini.Tag = geminiActif ? "Actif" : null;
+        SettingsService.PanneauIAVisible = geminiActif;
     }
 
     /// <summary>Ouvre le panneau Extensions ; une requête non nulle remplit le champ de recherche ("" = tout effacer).</summary>
@@ -422,42 +424,35 @@ public partial class MainWindow : Window
         }
     }
 
-    private void BasculerIA_Click(object sender, RoutedEventArgs e) =>
-        AfficherPanneauIA(AssistantIA.Visibility != Visibility.Visible);
+    private void BasculerIA_Click(object sender, RoutedEventArgs e) => BasculerGemini();
 
-    private void AfficherPanneauIA(bool afficher)
+    private void BasculerGemini()
     {
-        if (afficher)
-        {
-            AssistantIA.Visibility = Visibility.Visible;
-            SeparateurIA.Visibility = Visibility.Visible;
-            ColonneIA.Width = new GridLength(_largeurIA);
-            ColonneSeparateurIA.Width = new GridLength(4);
-            ActGemini.Tag = "Actif";
-            SettingsService.PanneauIAVisible = true;
-            Dispatcher.BeginInvoke(() => AssistantIA.FocaliserPrompt());
-        }
+        if (PanneauGauche.Visibility == Visibility.Visible && _vueGauche == VueGauche.Gemini)
+            BasculerExplorateur();
         else
-        {
-            if (ColonneIA.ActualWidth > 100) _largeurIA = ColonneIA.ActualWidth;
-            AssistantIA.Visibility = Visibility.Collapsed;
-            SeparateurIA.Visibility = Visibility.Collapsed;
-            ColonneIA.Width = new GridLength(0);
-            ColonneSeparateurIA.Width = new GridLength(0);
-            ActGemini.Tag = null;
-            SettingsService.PanneauIAVisible = false;
-        }
+            AfficherGemini();
+    }
+
+    /// <summary>Affiche Gemini dans le panneau gauche (largeur minimale 340 px, comme l'agent de VS Code).</summary>
+    private void AfficherGemini()
+    {
+        _vueGauche = VueGauche.Gemini;
+        if (PanneauGauche.Visibility != Visibility.Visible) BasculerExplorateur();
+        AppliquerVueGauche();
+        if (ColonneGauche.Width.Value < 320) ColonneGauche.Width = new GridLength(340);
+        Dispatcher.BeginInvoke(() => AssistantIA.FocaliserPrompt());
     }
 
     private void ExpliquerIA_Click(object sender, RoutedEventArgs e)
     {
-        AfficherPanneauIA(true);
+        AfficherGemini();
         AppEvents.DemanderAideIA("Explique clairement ce fichier et son rôle.", Contexte.CheminActif, null);
     }
 
     private void CorrigerIA_Click(object sender, RoutedEventArgs e)
     {
-        AfficherPanneauIA(true);
+        AfficherGemini();
         AppEvents.DemanderAideIA("Analyse les erreurs et propose une correction complète.", Contexte.CheminActif, null);
     }
 
@@ -854,7 +849,7 @@ public partial class MainWindow : Window
             case Key.F when maj && !alt: AfficherRechercheFichiers(); e.Handled = true; break;
             case Key.X when maj && !alt: AfficherExtensions(); e.Handled = true; break;
             case Key.J when !maj && !alt: BasculerTerminal(); e.Handled = true; break;
-            case Key.I when alt && !maj: AfficherPanneauIA(AssistantIA.Visibility != Visibility.Visible); e.Handled = true; break;
+            case Key.I when alt && !maj: BasculerGemini(); e.Handled = true; break;
             case Key.N when alt && !maj && ExtensionsService.EstActive(ExtensionsService.IdCodeRunner):
                 ExecuterCode(); e.Handled = true; break;
         }
@@ -890,8 +885,6 @@ public partial class MainWindow : Window
             SettingsService.LargeurPanneauGauche = ColonneGauche.ActualWidth;
         if (Terminal.Visibility == Visibility.Visible && LigneBas.ActualHeight > 40)
             SettingsService.HauteurPanneauBas = LigneBas.ActualHeight;
-        if (AssistantIA.Visibility == Visibility.Visible && ColonneIA.ActualWidth > 100)
-            SettingsService.LargeurPanneauIA = ColonneIA.ActualWidth;
 
         LiveServerService.Arreter();
         Terminal.Arreter();

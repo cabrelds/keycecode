@@ -4,134 +4,369 @@
              Background="{DynamicResource ThemeFondSecondaire}"
              Loaded="AssistantIAControl_Loaded"
              Unloaded="AssistantIAControl_Unloaded">
+
+    <UserControl.Resources>
+        <!-- Bouton d'icône discret (en-tête, barre du bas, zone de saisie) -->
+        <Style x:Key="BoutonOutilIA" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeTexteSecondaire}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Width" Value="28"/>
+            <Setter Property="Height" Value="26"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Fond" Background="{TemplateBinding Background}"
+                                CornerRadius="5" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Fond" Property="Background" Value="{DynamicResource ThemeSurvol}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource ThemeTexte}"/>
+                            </Trigger>
+                            <Trigger Property="Tag" Value="Actif">
+                                <Setter Property="Foreground" Value="{DynamicResource ThemeAccent}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.4"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Bouton rond d'envoi (gris, devient bleu quand le message est prêt) -->
+        <Style x:Key="BoutonEnvoiRond" TargetType="Button">
+            <Setter Property="Width" Value="28"/>
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="Background" Value="#40808080"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeTexteSecondaire}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Fond" CornerRadius="14" Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="Tag" Value="Pret">
+                                <Setter TargetName="Fond" Property="Background" Value="{DynamicResource ThemeAccent}"/>
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Opacity" Value="0.85"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Gros bouton arrondi « Se connecter » -->
+        <Style x:Key="BoutonPilule" TargetType="Button">
+            <Setter Property="Background" Value="{DynamicResource ThemeFondTertiaire}"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeTexte}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ThemeBordure}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="26,8"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Fond" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="18" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Fond" Property="Background" Value="{DynamicResource ThemeSurvol}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Lien texte (« Saisir », « Obtenir une clé ») -->
+        <Style x:Key="BoutonLienIA" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeTexte}"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <ContentPresenter VerticalAlignment="Center"/>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Foreground" Value="{DynamicResource ThemeLien}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <DataTemplate x:Key="ModeleSuggestion">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="{Binding Libelle}" FontSize="12" Foreground="{DynamicResource ThemeTexte}"/>
+                <TextBlock Text="{Binding Detail}" FontSize="11" Margin="10,0,0,0" VerticalAlignment="Center"
+                           Foreground="{DynamicResource ThemeTexteSecondaire}"/>
+            </StackPanel>
+        </DataTemplate>
+    </UserControl.Resources>
+
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- En-tête -->
-        <Border Grid.Row="0" Padding="10,6"
-                BorderBrush="{DynamicResource ThemeBordure}" BorderThickness="0,0,0,1">
-            <DockPanel LastChildFill="False">
-                <TextBlock Text="✦ GEMINI AI" DockPanel.Dock="Left"
-                           Foreground="{DynamicResource ThemeAccent}"
-                           FontSize="11" FontWeight="Bold" VerticalAlignment="Center"/>
-                <Button Content="✕" ToolTip="Fermer l'assistant" DockPanel.Dock="Right"
-                        Background="Transparent" Foreground="{DynamicResource ThemeTexte}"
-                        BorderThickness="0" Padding="6,2" Cursor="Hand" Focusable="False"
-                        Click="Fermer_Click"/>
-                <Button Content="Effacer" ToolTip="Nouvelle conversation" DockPanel.Dock="Right"
-                        Background="Transparent" Foreground="{DynamicResource ThemeTexteSecondaire}"
-                        BorderThickness="0" Padding="6,2" FontSize="11" Cursor="Hand" Focusable="False"
-                        Click="Effacer_Click"/>
-                <Button Content="⚙ Clé API" ToolTip="Configurer la clé API Gemini" DockPanel.Dock="Right"
-                        Background="Transparent" Foreground="{DynamicResource ThemeTexte}"
-                        BorderThickness="0" Padding="6,2" FontSize="11" Cursor="Hand" Focusable="False"
-                        Click="BasculerConfig_Click"/>
-            </DockPanel>
-        </Border>
+        <!-- En-tête : titre à gauche, + / historique / paramètres à droite -->
+        <Grid Grid.Row="0" Margin="14,10,10,6">
+            <TextBlock Text="Gemini" FontSize="13" FontWeight="SemiBold"
+                       Foreground="{DynamicResource ThemeTexte}" VerticalAlignment="Center"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="BoutonNouvelle" ToolTip="Nouvelle conversation"
+                        Style="{StaticResource BoutonOutilIA}" Click="Nouvelle_Click">
+                    <Path Data="M8,2 V14 M2,8 H14"
+                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                          StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                          Width="15" Height="15" Stretch="Uniform"/>
+                </Button>
+                <Button x:Name="BoutonHistorique" ToolTip="Historique des conversations"
+                        Style="{StaticResource BoutonOutilIA}" Click="Historique_Click">
+                    <Path Data="M2,8 A6,6 0 1 0 4,3.6 M2,2 V5 H5 M8,4.5 V8 L10.5,9.5"
+                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                          StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                          StrokeLineJoin="Round" Width="15" Height="15" Stretch="Uniform"/>
+                </Button>
+                <Button ToolTip="Paramètres Gemini (clé API)"
+                        Style="{StaticResource BoutonOutilIA}" Click="BasculerConfig_Click">
+                    <Path Data="M12,8 A4,4 0 1 0 12,16 A4,4 0 1 0 12,8 M12,2 L12,5 M12,19 L12,22 M2,12 L5,12 M19,12 L22,12 M5,5 L7,7 M17,17 L19,19 M19,5 L17,7 M7,17 L5,19"
+                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                          StrokeThickness="1.6" Fill="Transparent" Width="15" Height="15" Stretch="Uniform"/>
+                </Button>
+            </StackPanel>
+        </Grid>
 
-        <!-- Configuration rapide clé API & modèle -->
+        <!-- Paramètres : clé API -->
         <Border x:Name="PanneauConfig" Grid.Row="1" Visibility="Collapsed"
+                Margin="12,0,12,8" Padding="10"
                 Background="{DynamicResource ThemeFondTertiaire}"
-                BorderBrush="{DynamicResource ThemeBordure}" BorderThickness="0,0,0,1"
-                Padding="10,8">
+                BorderBrush="{DynamicResource ThemeBordure}" BorderThickness="1" CornerRadius="6">
             <StackPanel>
-                <TextBlock Text="Clé API Google Gemini (aistudio.google.com/apikey) :"
-                           Foreground="{DynamicResource ThemeTexte}" FontSize="11" Margin="0,0,0,4"/>
-                <TextBox x:Name="ChampCleApi" Style="{StaticResource ChampVsCode}" FontSize="11" Margin="0,0,0,6"/>
-                <Grid Margin="0,0,0,6">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="Modèle :" Foreground="{DynamicResource ThemeTexte}"
-                               FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                    <ComboBox x:Name="ComboModele" Grid.Column="1" FontSize="11">
-                        <ComboBoxItem Content="gemini-3.8-flash"/>
-                        <ComboBoxItem Content="gemini-flash-latest"/>
-                        <ComboBoxItem Content="gemini-3.7-flash"/>
-                        <ComboBoxItem Content="gemini-3.8-pro"/>
-                    </ComboBox>
-                    <Button x:Name="BoutonRafraichirModeles" Grid.Column="2" Content="↻"
-                            Margin="4,0,0,0" Padding="7,2" FontSize="12"
-                            ToolTip="Charger les modèles disponibles pour cette clé API"
-                            Style="{StaticResource BoutonSecondaireVsCode}"
-                            Click="RafraichirModeles_Click"/>
-                </Grid>
-                <Button Content="Enregistrer la configuration"
-                        Style="{StaticResource BoutonPrimaireVsCode}"
-                        FontSize="11" Click="SauvegarderConfig_Click"/>
+                <TextBlock Text="Clé API Google Gemini" FontSize="11" FontWeight="SemiBold"
+                           Foreground="{DynamicResource ThemeTexte}"/>
+                <TextBox x:Name="ChampCleApi" Style="{StaticResource ChampVsCode}"
+                         FontSize="11" Margin="0,4,0,6"/>
+                <Button Content="Obtenir une clé gratuite sur Google AI Studio"
+                        Style="{StaticResource BoutonLienIA}" FontSize="11" FontWeight="Normal"
+                        HorizontalAlignment="Left" Margin="0,0,0,8" Click="ObtenirCle_Click"/>
+                <StackPanel Orientation="Horizontal">
+                    <Button Content="Enregistrer" FontSize="11" Margin="0,0,6,0"
+                            Style="{StaticResource BoutonPrimaireVsCode}" Click="SauvegarderConfig_Click"/>
+                    <Button Content="Actualiser les modèles" FontSize="11"
+                            Style="{StaticResource BoutonSecondaireVsCode}" Click="RafraichirModeles_Click"/>
+                </StackPanel>
+                <TextBlock x:Name="TexteConfig" FontSize="10" Margin="0,6,0,0" TextWrapping="Wrap"
+                           Foreground="{DynamicResource ThemeTexteSecondaire}"/>
             </StackPanel>
         </Border>
 
-        <!-- Options de contexte et actions rapides -->
-        <Border Grid.Row="2" Padding="8,6"
-                BorderBrush="{DynamicResource ThemeBordure}" BorderThickness="0,0,0,1">
-            <StackPanel>
-                <WrapPanel Margin="0,0,0,6">
-                    <CheckBox x:Name="ChkFichier" Content="Fichier actif" IsChecked="True"
-                              Foreground="{DynamicResource ThemeTexte}" FontSize="11" Margin="0,0,10,0"/>
-                    <CheckBox x:Name="ChkSelection" Content="Sélection" IsChecked="True"
-                              Foreground="{DynamicResource ThemeTexte}" FontSize="11" Margin="0,0,10,0"/>
-                    <CheckBox x:Name="ChkErreurs" Content="Erreurs" IsChecked="True"
-                              Foreground="{DynamicResource ThemeTexte}" FontSize="11"/>
-                </WrapPanel>
-                <WrapPanel>
-                    <Button Content="Expliquer" Margin="0,0,4,4" Padding="7,3" FontSize="11"
-                            Style="{StaticResource BoutonSecondaireVsCode}" Click="ActionExpliquer_Click"/>
-                    <Button Content="Corriger erreurs" Margin="0,0,4,4" Padding="7,3" FontSize="11"
-                            Style="{StaticResource BoutonSecondaireVsCode}" Click="ActionCorriger_Click"/>
-                    <Button Content="Optimiser" Margin="0,0,4,4" Padding="7,3" FontSize="11"
-                            Style="{StaticResource BoutonSecondaireVsCode}" Click="ActionOptimiser_Click"/>
-                    <Button Content="Commenter" Margin="0,0,4,4" Padding="7,3" FontSize="11"
-                            Style="{StaticResource BoutonSecondaireVsCode}" Click="ActionCommenter_Click"/>
-                </WrapPanel>
-            </StackPanel>
-        </Border>
+        <!-- Zone centrale : accueil (logo animé) ou conversation -->
+        <Grid Grid.Row="2">
+            <Grid x:Name="VueAccueil">
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <Path Data="{StaticResource GeminiLogoGeometry}"
+                          Fill="{StaticResource GeminiLogoBrush}"
+                          Width="52" Height="52" Stretch="Uniform"
+                          HorizontalAlignment="Center" RenderTransformOrigin="0.5,0.5">
+                        <Path.RenderTransform>
+                            <ScaleTransform x:Name="EchelleLogo" ScaleX="1" ScaleY="1"/>
+                        </Path.RenderTransform>
+                        <Path.Triggers>
+                            <EventTrigger RoutedEvent="FrameworkElement.Loaded">
+                                <BeginStoryboard>
+                                    <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                                        <DoubleAnimation Storyboard.TargetName="EchelleLogo"
+                                                         Storyboard.TargetProperty="ScaleX"
+                                                         From="0.9" To="1.08" Duration="0:0:1.3"/>
+                                        <DoubleAnimation Storyboard.TargetName="EchelleLogo"
+                                                         Storyboard.TargetProperty="ScaleY"
+                                                         From="0.9" To="1.08" Duration="0:0:1.3"/>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </EventTrigger>
+                        </Path.Triggers>
+                    </Path>
+                    <StackPanel x:Name="BlocPret" Margin="0,18,0,0" Visibility="Collapsed">
+                        <TextBlock Text="Demandez n'importe quoi à Gemini" FontSize="13" FontWeight="SemiBold"
+                                   HorizontalAlignment="Center" Foreground="{DynamicResource ThemeTexte}"/>
+                        <TextBlock Text="@ pour mentionner un fichier  ·  / pour les commandes" FontSize="11"
+                                   HorizontalAlignment="Center" Margin="0,4,0,0"
+                                   Foreground="{DynamicResource ThemeTexteSecondaire}"/>
+                    </StackPanel>
+                </StackPanel>
 
-        <!-- Historique des messages -->
-        <ScrollViewer x:Name="DefileurChat" Grid.Row="3" VerticalScrollBarVisibility="Auto" Padding="8">
-            <StackPanel x:Name="ListeMessages">
-                <Border x:Name="CarteBienvenue" Background="{DynamicResource ThemeFondTertiaire}"
-                        BorderBrush="{DynamicResource ThemeBordure}" BorderThickness="1"
-                        CornerRadius="6" Padding="10" Margin="0,0,0,8">
-                    <TextBlock TextWrapping="Wrap" FontSize="12"
-                               Foreground="{DynamicResource ThemeTexte}"
-                               Text="Bonjour ! Je suis ton assistant Gemini intégré à KeyCode. Pose-moi une question, sélectionne du code ou clique sur « Corriger erreurs » pour analyser et insérer du code en un clic."/>
-                </Border>
-            </StackPanel>
-        </ScrollViewer>
+                <StackPanel x:Name="BlocConnexion" VerticalAlignment="Bottom" HorizontalAlignment="Center"
+                            Margin="0,0,0,26">
+                    <Button Content="Se connecter" Style="{StaticResource BoutonPilule}"
+                            HorizontalAlignment="Center" Click="SeConnecter_Click"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,12,0,0">
+                        <TextBlock Text="Vous avez déjà une clé ?" FontSize="12" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource ThemeTexteSecondaire}"/>
+                        <TextBlock Text="  ·  " FontSize="12" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource ThemeTexteSecondaire}"/>
+                        <Button Content="Saisir" Style="{StaticResource BoutonLienIA}" Click="SeConnecter_Click"/>
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
 
-        <!-- Zone de saisie -->
-        <Border Grid.Row="4" Padding="8"
-                BorderBrush="{DynamicResource ThemeBordure}" BorderThickness="0,1,0,0">
-            <StackPanel>
-                <TextBlock x:Name="TexteStatut" Text="Prêt"
-                           Foreground="{DynamicResource ThemeTexteSecondaire}"
-                           FontSize="10" Margin="0,0,0,4"/>
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBox x:Name="ChampPrompt" Grid.Column="0"
-                             Style="{StaticResource ChampVsCode}"
-                             AcceptsReturn="True" TextWrapping="Wrap"
-                             MaxHeight="95" MinHeight="42"
+            <ScrollViewer x:Name="DefileurChat" Visibility="Collapsed"
+                          VerticalScrollBarVisibility="Auto" Padding="12,4,12,4">
+                <StackPanel x:Name="ListeMessages"/>
+            </ScrollViewer>
+        </Grid>
+
+        <!-- Zone de saisie arrondie -->
+        <Border Grid.Row="3" Margin="12,4,12,8" Padding="10,8,8,6" CornerRadius="10" BorderThickness="1"
+                Background="{DynamicResource ThemeSaisieFond}">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="BorderBrush" Value="{DynamicResource ThemeSaisieBordure}"/>
+                    <Style.Triggers>
+                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                            <Setter Property="BorderBrush" Value="{DynamicResource ThemeAccent}"/>
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <Grid Grid.Row="0">
+                    <TextBox x:Name="ChampPrompt"
+                             Background="Transparent" BorderThickness="0" Padding="0"
+                             Foreground="{DynamicResource ThemeTexte}"
+                             CaretBrush="{DynamicResource ThemeTexte}"
+                             SelectionBrush="{DynamicResource ThemeSelection}"
+                             FontSize="13" AcceptsReturn="True" TextWrapping="Wrap"
+                             MinHeight="44" MaxHeight="150"
                              VerticalScrollBarVisibility="Auto"
+                             TextChanged="ChampPrompt_TextChanged"
                              PreviewKeyDown="ChampPrompt_PreviewKeyDown"/>
-                    <Button x:Name="BoutonEnvoyer" Grid.Column="1" Content="Envoyer"
-                            Margin="6,0,0,0" VerticalAlignment="Bottom"
-                            Style="{StaticResource BoutonPrimaireVsCode}"
-                            Click="Envoyer_Click"/>
+                    <TextBlock x:Name="Placeholder" IsHitTestVisible="False" TextWrapping="Wrap" FontSize="13"
+                               Text="Demandez n'importe quoi, @ pour mentionner, / pour les commandes"
+                               Foreground="{DynamicResource ThemeTexteSecondaire}"/>
+
+                    <Popup x:Name="PopupSuggestions" PlacementTarget="{Binding ElementName=ChampPrompt}"
+                           Placement="Top" StaysOpen="False" AllowsTransparency="True" Focusable="False">
+                        <Border Background="{DynamicResource ThemeFondSecondaire}"
+                                BorderBrush="{DynamicResource ThemeBordure}" BorderThickness="1"
+                                CornerRadius="6" Padding="2" Margin="0,0,0,6">
+                            <ListBox x:Name="ListeSuggestions" MaxHeight="210" BorderThickness="0"
+                                     ItemTemplate="{StaticResource ModeleSuggestion}"
+                                     PreviewMouseLeftButtonUp="Suggestion_Clic"/>
+                        </Border>
+                    </Popup>
                 </Grid>
-            </StackPanel>
+
+                <Grid Grid.Row="1" Margin="0,4,0,0">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                        <Button ToolTip="Joindre ou mentionner un fichier"
+                                Style="{StaticResource BoutonOutilIA}" Click="Plus_Click">
+                            <Path Data="M8,2 V14 M2,8 H14"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                  StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  Width="14" Height="14" Stretch="Uniform"/>
+                        </Button>
+                        <Button x:Name="BoutonModele" ToolTip="Choisir le modèle Gemini"
+                                Style="{StaticResource BoutonOutilIA}" Width="Auto" Padding="6,0"
+                                Click="Modele_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Data="{StaticResource GeminiLogoGeometry}"
+                                      Fill="{StaticResource GeminiLogoBrush}"
+                                      Width="13" Height="13" Stretch="Uniform" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="TexteModele" Margin="6,0,2,0" FontSize="12" MaxWidth="130"
+                                           TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                <Path Data="M1,3 L4,6 L7,3"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                      StrokeThickness="1.3" Width="8" Height="8" Stretch="Uniform"
+                                      VerticalAlignment="Center" Margin="2,0,0,0"/>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="BoutonAgent"
+                                ToolTip="Mode Agent (désactivé) : Gemini renvoie les modifications complètes, un bloc par fichier"
+                                Style="{StaticResource BoutonOutilIA}" Click="Agent_Click">
+                            <Path Data="M9,1 L3,9 H8 L7,15 L13,6 H8 Z"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                  StrokeThickness="1.3" StrokeLineJoin="Round" Fill="Transparent"
+                                  Width="14" Height="14" Stretch="Uniform"/>
+                        </Button>
+                    </StackPanel>
+
+                    <Button x:Name="BoutonEnvoyer" HorizontalAlignment="Right"
+                            Style="{StaticResource BoutonEnvoiRond}" ToolTip="Envoyer (Entrée)"
+                            Click="Envoyer_Click">
+                        <Grid>
+                            <Path x:Name="IconeEnvoyer" Data="M8,13 V3 M3.5,7.5 L8,3 L12.5,7.5"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                  StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  StrokeLineJoin="Round" Width="14" Height="14" Stretch="Uniform"/>
+                            <Border x:Name="IconeStop" Visibility="Collapsed" Width="10" Height="10" CornerRadius="2"
+                                    Background="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                        </Grid>
+                    </Button>
+                </Grid>
+            </Grid>
         </Border>
+
+        <!-- Barre d'icônes du bas : contexte, actions rapides, outils -->
+        <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="14,0,12,10">
+            <Button ToolTip="Contexte envoyé à Gemini (fichier actif, sélection, erreurs)"
+                    Style="{StaticResource BoutonOutilIA}" Click="Contexte_Click">
+                <Path Data="M2,3 H14 M2,8 H14 M2,13 H10"
+                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                      StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                      Width="14" Height="14" Stretch="Uniform"/>
+            </Button>
+            <Button ToolTip="Actions rapides (expliquer, corriger, optimiser, commenter)"
+                    Style="{StaticResource BoutonOutilIA}" Click="Actions_Click">
+                <Path Data="M2,14 L9,7 M11,2 V5 M9.5,3.5 H12.5 M13,8 V11 M11.5,9.5 H14.5"
+                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                      StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                      Width="14" Height="14" Stretch="Uniform"/>
+            </Button>
+            <Button ToolTip="Outils (modèles, clé API)"
+                    Style="{StaticResource BoutonOutilIA}" Click="Outils_Click">
+                <Path Data="M2,4 H14 M2,8 H14 M2,12 H14 M5,2.5 V5.5 M10,6.5 V9.5 M6,10.5 V13.5"
+                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                      StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                      Width="14" Height="14" Stretch="Uniform"/>
+            </Button>
+        </StackPanel>
     </Grid>
 </UserControl>
